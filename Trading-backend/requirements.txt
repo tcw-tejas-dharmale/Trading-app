@@ -6,7 +6,7 @@ python-jose[cryptography]
 passlib[bcrypt]
 python-multipart
 kiteconnect
-pydantic
+pydantic[email]
 pydantic-settings
 python-dotenv
 requests
