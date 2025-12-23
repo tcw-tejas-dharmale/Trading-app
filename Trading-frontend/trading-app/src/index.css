@@ -36,6 +36,14 @@ body {
   transition: background-color 0.3s, color 0.3s;
 }
 
+#root {
+  background-image: url('/images/trading-bg.png');
+  background-size: cover;
+  background-attachment: fixed;
+  background-position: center;
+  min-height: 100vh;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -72,8 +80,28 @@ button {
   gap: 1rem;
 }
 
+.gap-6 {
+  gap: 1.5rem;
+}
+
+.p-2 {
+  padding: 0.5rem;
+}
+
 .p-4 {
   padding: 1rem;
+}
+
+.mb-2 {
+  margin-bottom: 0.5rem;
+}
+
+.mb-4 {
+  margin-bottom: 1rem;
+}
+
+.mt-4 {
+  margin-top: 1rem;
 }
 
 .rounded {
@@ -88,8 +116,56 @@ button {
   font-size: 0.875rem;
 }
 
+.text-lg {
+  font-size: 1.125rem;
+}
+
 .font-bold {
   font-weight: 700;
+}
+
+.w-full {
+  width: 100%;
+}
+
+.w-32 {
+  width: 8rem;
+}
+
+.w-16 {
+  width: 4rem;
+}
+
+.overflow-x-auto {
+  overflow-x: auto;
+}
+
+.text-primary {
+  color: var(--text-primary);
+}
+
+.text-secondary {
+  color: var(--text-secondary);
+}
+
+.text-accent {
+  color: var(--accent);
+}
+
+.flex-wrap {
+  flex-wrap: wrap;
+}
+
+.flex-column {
+  flex-direction: column;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.spacer {
+  flex: 1;
 }
 
 /* Custom Components */
@@ -110,6 +186,17 @@ button {
   background-color: var(--accent-hover);
 }
 
+.btn-outline {
+  background-color: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+}
+
+.btn-outline:hover {
+  background-color: var(--bg-secondary);
+  border-color: var(--accent);
+}
+
 .input {
   background-color: var(--bg-secondary);
   border: 1px solid var(--border);
@@ -124,8 +211,14 @@ button {
 }
 
 .card {
-  background-color: var(--card-bg);
+  background-color: rgba(30, 41, 59, 0.85);
   border: 1px solid var(--border);
   border-radius: 0.5rem;
   padding: 1.5rem;
+  backdrop-filter: blur(10px);
+}
+
+.blur-overlay {
+  background-color: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(8px);
 }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { fetchInstruments } from '../services/api';
-import { LogOut, User, BarChart2 } from 'lucide-react';
+import { LogOut, User, TrendingUp } from 'lucide-react';
 import './Navbar.css';
 
 const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
@@ -41,8 +41,8 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
             <div className="navbar-content container">
                 <div className="flex items-center gap-4">
                     <div className="logo flex items-center gap-2">
-                        <BarChart2 color="var(--accent)" />
-                        <span className="font-bold text-lg">TradePro</span>
+                        <TrendingUp color="var(--accent)" size={28} />
+                        <span className="font-bold text-lg wyse-logo">WyseTrade</span>
                     </div>
 
                     {user && (
@@ -88,7 +88,7 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
             {showLogin && !user && (
                 <div className="login-modal-overlay">
                     <div className="login-modal card">
-                        <h2 className="text-lg font-bold mb-4">Login to TradePro</h2>
+                        <h2 className="text-lg font-bold mb-4">Login to WyseTrade</h2>
                         <form onSubmit={handleLogin} className="flex flex-column gap-4">
                             <input
                                 type="email"
