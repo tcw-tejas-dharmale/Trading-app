@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://localhost:8000/api/v1', // Adjust if backend port differs
+  baseURL: process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000/api/v1',
 });
 
 api.interceptors.request.use((config) => {
@@ -24,6 +24,11 @@ export const login = async (email, password) => {
 
 export const signup = async (email, password, name) => {
   const response = await api.post('/signup', { email, password, name });
+  return response.data;
+};
+
+export const fetchCurrentUser = async () => {
+  const response = await api.get('/users/me');
   return response.data;
 };
 

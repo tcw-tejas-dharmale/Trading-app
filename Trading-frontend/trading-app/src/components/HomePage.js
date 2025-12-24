@@ -1,12 +1,37 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { TrendingUp, BarChart3, Shield, Zap, ArrowRight, CheckCircle } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { fetchCurrentUser } from '../services/api';
 import './HomePage.css';
 
 const HomePage = () => {
+  const navigate = useNavigate();
+  const { user, loading } = useAuth();
   const [showGetInstruments, setShowGetInstruments] = React.useState(false);
 
-  const handleGetStarted = () => {
+  const handleGetStarted = async (event) => {
+    event.preventDefault();
+    if (loading) {
+      return;
+    }
+    if (!user?.token) {
+      navigate('/login');
+      return;
+    }
+    try {
+      await fetchCurrentUser();
+      navigate('/dashboard');
+    } catch (error) {
+      const status = error?.response?.status;
+      if (status === 404) {
+        navigate('/signup');
+      } else if (status === 401) {
+        navigate('/login');
+      } else {
+        navigate('/signup');
+      }
+    }
     setShowGetInstruments(true);
   };
 
@@ -25,13 +50,10 @@ const HomePage = () => {
               at your fingertips. Start trading smarter today.
             </p>
             <div className="hero-cta">
-              <Link to="/dashboard" className="btn btn-primary btn-large">
+              <button type="button" className="btn btn-primary btn-large" onClick={handleGetStarted}>
                 Get Started
                 <ArrowRight size={20} />
-              </Link>
-              <Link to="/help" className="btn btn-outline btn-large">
-                Learn More
-              </Link>
+              </button>
             </div>
             <div className="hero-features">
               <div className="hero-feature-item">
@@ -111,10 +133,10 @@ const HomePage = () => {
             <p className="cta-subtitle">
               Join thousands of traders using WysTrade to make smarter trading decisions.
             </p>
-            <Link to="/dashboard" className="btn btn-primary btn-large">
+            <button type="button" className="btn btn-primary btn-large" onClick={handleGetStarted}>
               Explore the dashboard
               <ArrowRight size={20} />
-            </Link>
+            </button>
           </div>
         </div>
       </section>

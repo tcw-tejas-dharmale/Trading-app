@@ -6,7 +6,8 @@ import { Clock, Sliders, TrendingUp, TrendingDown, Info, Shield, Target, AlertCi
 import './EnhancedDashboard.css';
 
 const EnhancedDashboard = ({ selectedInstrument }) => {
-    const [scales, setScales] = useState([]);
+    const preferredScales = ['1m', '4m', '5m', '15m', '30m', '1h', '1d', '2d', '1M'];
+    const [scales, setScales] = useState(preferredScales);
     const [strategies, setStrategies] = useState([]);
     const [selectedScale, setSelectedScale] = useState('5m');
     const [selectedStrategy, setSelectedStrategy] = useState(null);
@@ -19,6 +20,7 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
     const [chartType, setChartType] = useState('candlestick'); // 'candlestick', 'line', or 'bar'
     const [tooltipData, setTooltipData] = useState(null);
     const [hoveredRow, setHoveredRow] = useState(null);
+    const [selectedInstrumentTab, setSelectedInstrumentTab] = useState('nifty');
 
     const loadOptions = async () => {
         try {
@@ -38,6 +40,7 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
             if (strategiesData.length > 0) setSelectedStrategy(strategiesData[0].id);
         } catch (error) {
             console.error("Failed to load dashboard options", error);
+            setScales(preferredScales);
         }
     };
 

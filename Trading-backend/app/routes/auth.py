@@ -1,13 +1,16 @@
 from datetime import timedelta
 from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm, HTTPBearer, HTTPAuthorizationCredentials
 # from sqlalchemy.orm import Session
 from app.core import security, database
+from app.core.config import settings
 # from app.models.user import User
 from app.schemas.user import Token, UserCreate, User as UserSchema
+from jose import jwt, JWTError
 
 router = APIRouter()
+http_bearer = HTTPBearer()
 
 # Mock In-Memory DB
 FAKE_USERS_DB: Dict[str, dict] = {}
@@ -16,6 +19,12 @@ class MockUser:
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
             setattr(self, k, v)
+
+def _get_user_by_id(user_id: int):
+    for user in FAKE_USERS_DB.values():
+        if user.get("id") == user_id:
+            return user
+    return None
 
 @router.post("/login/access-token", response_model=Token)
 def login_access_token(db: Any = Depends(database.get_db), form_data: OAuth2PasswordRequestForm = Depends()) -> Any:
@@ -40,6 +49,20 @@ def login_access_token(db: Any = Depends(database.get_db), form_data: OAuth2Pass
         user.id, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+@router.get("/users/me", response_model=UserSchema)
+def read_current_user(credentials: HTTPAuthorizationCredentials = Depends(http_bearer)) -> Any:
+    try:
+        payload = jwt.decode(credentials.credentials, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        user = _get_user_by_id(int(user_id))
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        return user
+    except (JWTError, ValueError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
 @router.post("/signup", response_model=UserSchema)
 def create_user(
