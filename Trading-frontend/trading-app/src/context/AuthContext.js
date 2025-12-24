@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { login as loginApi, signup as signupApi } from '../services/api';
+import { login as loginApi, signup as signupApi, fetchCurrentUser } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -9,18 +9,35 @@ export const AuthProvider = ({ children }) => {
 
     useEffect(() => {
         const token = localStorage.getItem('token');
-        if (token) {
-            // Ideally verify token validity here or decode it
-            setUser({ token });
+        if (!token) {
+            setLoading(false);
+            return;
         }
-        setLoading(false);
+        const loadUser = async () => {
+            try {
+                const profile = await fetchCurrentUser();
+                setUser({ token, ...profile });
+            } catch (error) {
+                localStorage.removeItem('token');
+                setUser(null);
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadUser();
     }, []);
 
     const login = async (email, password) => {
         try {
             const data = await loginApi(email, password);
             localStorage.setItem('token', data.access_token);
-            setUser({ token: data.access_token });
+            setUser({ token: data.access_token, email });
+            try {
+                const profile = await fetchCurrentUser();
+                setUser({ token: data.access_token, ...profile });
+            } catch (error) {
+                // Keep basic session so routing can decide what to do next.
+            }
             return true;
         } catch (error) {
             console.error("Login failed", error);

@@ -20,7 +20,7 @@ const Footer = () => {
                   <path d="M4 20h16" opacity="0.6" />
                 </svg>
               </span>
-              <span className="brand-name footer-logo-text">WysTrade</span>
+              <span className="brand-name footer-logo-text">WyseTrade</span>
             </div>
             <p className="footer-description">
               Advanced trading platform with real-time market data, powerful analytics, and intuitive charting tools.
@@ -91,7 +91,7 @@ const Footer = () => {
         </div>
 
         <div className="footer-bottom">
-          <p>&copy; {new Date().getFullYear()} WysTrade. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} WyseTrade. All rights reserved.</p>
           <p className="footer-disclaimer">
             Trading involves substantial risk of loss. Please trade responsibly.
           </p>

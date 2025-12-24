@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { TrendingUp, BarChart3, Shield, Zap, ArrowRight, CheckCircle } from 'lucide-react';
+import { ArrowRight, CheckCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { fetchCurrentUser } from '../services/api';
 import './HomePage.css';
@@ -8,7 +8,6 @@ import './HomePage.css';
 const HomePage = () => {
   const navigate = useNavigate();
   const { user, loading } = useAuth();
-  const [showGetInstruments, setShowGetInstruments] = React.useState(false);
 
   const handleGetStarted = async (event) => {
     event.preventDefault();
@@ -32,7 +31,6 @@ const HomePage = () => {
         navigate('/signup');
       }
     }
-    setShowGetInstruments(true);
   };
 
   return (
@@ -73,73 +71,6 @@ const HomePage = () => {
         </div>
       </section>
 
-      {/* Features Section */}
-      <section className="features-section">
-        <div className="container">
-          <h2 className="section-title">Why Choose WysTrade?</h2>
-          <div className="features-grid">
-            <div className="feature-card">
-              <div className="feature-icon-wrapper">
-                <BarChart3 size={32} className="feature-icon-large" />
-              </div>
-              <h3 className="feature-title">Advanced Charting</h3>
-              <p className="feature-description">
-                Interactive charts with multiple timeframes, indicators, and drawing tools
-                to help you make informed trading decisions.
-              </p>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper">
-                <Zap size={32} className="feature-icon-large" />
-              </div>
-              <h3 className="feature-title">Real-Time Data</h3>
-              <p className="feature-description">
-                Access live market data and historical information with low latency
-                to stay ahead of market movements.
-              </p>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper">
-                <TrendingUp size={32} className="feature-icon-large" />
-              </div>
-              <h3 className="feature-title">Trading Strategies</h3>
-              <p className="feature-description">
-                Apply powerful trading strategies including Moving Averages, RSI,
-                and Bollinger Bands to identify opportunities.
-              </p>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper">
-                <Shield size={32} className="feature-icon-large" />
-              </div>
-              <h3 className="feature-title">Secure & Reliable</h3>
-              <p className="feature-description">
-                Your data is protected with industry-standard security measures
-                and our platform is built for reliability.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="cta-section">
-        <div className="container">
-          <div className="cta-content">
-            <h2 className="cta-title">Ready to Start Trading?</h2>
-            <p className="cta-subtitle">
-              Join thousands of traders using WysTrade to make smarter trading decisions.
-            </p>
-            <button type="button" className="btn btn-primary btn-large" onClick={handleGetStarted}>
-              Explore the dashboard
-              <ArrowRight size={20} />
-            </button>
-          </div>
-        </div>
-      </section>
     </div>
   );
 };

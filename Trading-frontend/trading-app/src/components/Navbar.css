@@ -28,6 +28,7 @@
 .navbar .brand-name {
   font-size: 24px;
   font-weight: 700;
+  color: #ffffff;
 }
 
 .navbar-actions {
@@ -54,6 +55,19 @@
   color: var(--accent);
   border-color: var(--accent);
   background: rgba(31, 191, 158, 0.12);
+}
+
+.navbar-avatar {
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.navbar-login {
+  padding: 0.45rem 1.1rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
 }
 
 .instrument-dropdown {

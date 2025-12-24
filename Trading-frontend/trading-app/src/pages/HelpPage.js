@@ -9,18 +9,18 @@ const HelpPage = () => {
   const faqs = [
     {
       id: 1,
-      question: 'How do I get started with WysTrade?',
-      answer: 'You can start using WysTrade immediately without signing up. Simply navigate to the Dashboard to view market data and charts. If you want to save your preferences, you can optionally create an account.'
+      question: 'How do I get started with WyseTrade?',
+      answer: 'You can start using WyseTrade immediately without signing up. Simply navigate to the Dashboard to view market data and charts. If you want to save your preferences, you can optionally create an account.'
     },
     {
       id: 2,
-      question: 'What data sources does WysTrade use?',
-      answer: 'WysTrade currently uses simulated market data for demonstration purposes. In production, it would connect to real-time market data providers like Zerodha Kite API or other financial data services.'
+      question: 'What data sources does WyseTrade use?',
+      answer: 'WyseTrade currently uses simulated market data for demonstration purposes. In production, it would connect to real-time market data providers like Zerodha Kite API or other financial data services.'
     },
     {
       id: 3,
       question: 'What trading strategies are available?',
-      answer: 'WysTrade supports several trading strategies including Moving Average Crossover, RSI Strategy, and Bollinger Bands. You can select and apply these strategies from the Dashboard to analyze market trends.'
+      answer: 'WyseTrade supports several trading strategies including Moving Average Crossover, RSI Strategy, and Bollinger Bands. You can select and apply these strategies from the Dashboard to analyze market trends.'
     },
     {
       id: 4,
@@ -30,12 +30,12 @@ const HelpPage = () => {
     {
       id: 5,
       question: 'Is my data secure?',
-      answer: 'Yes, WysTrade implements industry-standard security measures to protect your data. All communications are encrypted, and we follow best practices for data protection and privacy.'
+      answer: 'Yes, WyseTrade implements industry-standard security measures to protect your data. All communications are encrypted, and we follow best practices for data protection and privacy.'
     },
     {
       id: 6,
-      question: 'Can I use WysTrade on mobile devices?',
-      answer: 'Yes, WysTrade is fully responsive and works on mobile devices, tablets, and desktops. The interface adapts to different screen sizes for optimal viewing experience.'
+      question: 'Can I use WyseTrade on mobile devices?',
+      answer: 'Yes, WyseTrade is fully responsive and works on mobile devices, tablets, and desktops. The interface adapts to different screen sizes for optimal viewing experience.'
     }
   ];
 

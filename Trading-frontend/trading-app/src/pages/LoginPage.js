@@ -52,12 +52,12 @@ const LoginPage = () => {
         <div className="login-card login-card-compact">
           <div className="login-brand">
             <span className="brand-mark" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none">
-                <path d="M4 16l5-5 4 4 7-8" />
-                <path d="M4 20h16" opacity="0.6" />
-              </svg>
+              <img
+                src={`${process.env.PUBLIC_URL}/WyseTrade Logo with Minimalist Owl Design.png`}
+                alt="WyseTrade logo"
+              />
             </span>
-            <span className="brand-name">WysTrade</span>
+            <span className="brand-name">WyseTrade</span>
           </div>
           <h1 className="login-title">Sign in</h1>
           <p className="login-subtitle">Access real-time signals and market tools.</p>
@@ -69,7 +69,7 @@ const LoginPage = () => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="login-form" autoComplete="off">
+          <form onSubmit={handleSubmit} className="login-form">
             <div className="form-group">
               <label htmlFor="email" className="form-label">
                 Email Address
@@ -84,7 +84,7 @@ const LoginPage = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={loading}
-                  autoComplete="off"
+                  autoComplete="email"
                 />
               </div>
             </div>
@@ -103,7 +103,7 @@ const LoginPage = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={loading}
-                  autoComplete="off"
+                  autoComplete="current-password"
                 />
                 <button
                   type="button"
@@ -133,7 +133,7 @@ const LoginPage = () => {
             ) : (
               <div className="login-footer-actions">
                 <p className="login-footer-text">
-                  No account yet?{' '}
+                  New here?{' '}
                   <Link to="/signup" className="login-footer-link">
                     Create account
                   </Link>
