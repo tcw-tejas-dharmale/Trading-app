@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { fetchInstruments } from '../services/api';
-import { User } from 'lucide-react';
 import './Navbar.css';
 
 const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
@@ -11,10 +10,13 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
     const navigate = useNavigate();
     const [instruments, setInstruments] = useState([]);
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+    const userInitial = (user?.name || user?.email || '').trim().charAt(0).toUpperCase();
 
     useEffect(() => {
-        loadInstruments();
-    }, []);
+        if (location.pathname === '/dashboard') {
+            loadInstruments();
+        }
+    }, [location.pathname]);
 
     const loadInstruments = async () => {
         try {
@@ -53,44 +55,48 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
                 <div className="navbar-left">
                     <Link to="/" className="brand-logo">
                         <span className="brand-mark" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="none">
-                                <path d="M4 16l5-5 4 4 7-8" />
-                                <path d="M4 20h16" opacity="0.6" />
-                            </svg>
+                            <img
+                                src={`${process.env.PUBLIC_URL}/WyseTrade Logo with Minimalist Owl Design.png`}
+                                alt="WyseTrade logo"
+                            />
                         </span>
-                        <span className="brand-name">WysTrade</span>
+                        <span className="brand-name">WyseTrade</span>
                     </Link>
                 </div>
 
                 <div className="navbar-actions">
-                    <div className="instrument-dropdown">
-                        <select
-                            className="input instrument-select"
-                            onFocus={loadInstruments}
-                            value={selectedInstrument?.instrument_token || ''}
-                            onChange={handleInstrumentSelect}
-                        >
-                            <option value="">Get Instruments</option>
-                            {instruments.map(inst => (
-                                <option key={inst.instrument_token} value={inst.instrument_token}>
-                                    {inst.name} ({inst.tradingsymbol})
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+                    {location.pathname === '/dashboard' && (
+                        <div className="instrument-dropdown">
+                            <select
+                                className="input instrument-select"
+                                onFocus={loadInstruments}
+                                value={selectedInstrument?.instrument_token || ''}
+                                onChange={handleInstrumentSelect}
+                            >
+                                <option value="">Get Instruments</option>
+                                {instruments.map(inst => (
+                                    <option key={inst.instrument_token} value={inst.instrument_token}>
+                                        {inst.name} ({inst.tradingsymbol})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
                     <div className="user-menu-wrapper">
-                        <Link
-                            to={user ? '/profile' : '/login'}
-                            className="navbar-icon-button"
-                            aria-label={user ? 'Profile' : 'Sign In'}
-                            onClick={(event) => {
-                                if (!user) return;
-                                event.preventDefault();
-                                setIsUserMenuOpen((open) => !open);
-                            }}
-                        >
-                            <User size={18} />
-                        </Link>
+                        {!user ? (
+                            <Link to="/login" className="btn btn-outline navbar-login">
+                                Login
+                            </Link>
+                        ) : (
+                            <button
+                                type="button"
+                                className="navbar-icon-button navbar-avatar"
+                                aria-label="Profile"
+                                onClick={() => setIsUserMenuOpen((open) => !open)}
+                            >
+                                {userInitial || '?'}
+                            </button>
+                        )}
                         {user && (
                             <button
                                 type="button"
