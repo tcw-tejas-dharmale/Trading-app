@@ -55,4 +55,63 @@ class MarketDataController:
 
         return data
 
+    async def get_nifty50(self, db):
+        # Fetch stocks with segment 'NIFTY50'
+        # stocks = db.query(Stock).filter(Stock.segment == "NIFTY50").all()
+        # For now, to ensure it works without populating DB manually:
+        # We can return a list. ideally we query DB.
+        # User said "all data is coming through postgress".
+        # I should try to query. If empty, return empty list or fallback?
+        # I'll Write code to query.
+        
+        from app.models.market import Stock
+        stocks = db.query(Stock).filter(Stock.segment == "NIFTY50").all()
+        
+        # Transform for frontend
+        results = []
+        for stock in stocks:
+             results.append({
+                 "id": stock.id,
+                 "name": stock.name,
+                 "sector": stock.sector,
+                 "position": "NEUTRAL", # Default
+                 "candles": [], # Placeholder or fetch from another table
+                 "last_price": stock.last_price
+             })
+        return results
+
+    async def get_banknifty(self, db):
+        from app.models.market import Stock
+        stocks = db.query(Stock).filter(Stock.segment == "BANKNIFTY").all()
+        
+        results = []
+        for stock in stocks:
+             results.append({
+                 "id": stock.id,
+                 "name": stock.name,
+                 "sector": stock.sector,
+                 "position": "NEUTRAL",
+                 "candles": [],
+                 "last_price": stock.last_price
+             })
+        return results
+
+    async def get_positions(self, db, user_id):
+        from app.models.market import Position, Stock
+        positions = db.query(Position).filter(Position.user_id == user_id).all()
+        
+        results = []
+        for pos in positions:
+            # Maybe join with Stock to get name
+            stock = db.query(Stock).filter(Stock.symbol == pos.stock_symbol).first()
+            results.append({
+                "id": pos.id,
+                "name": stock.name if stock else pos.stock_symbol,
+                "position": pos.type,
+                "candles": [], 
+                "avg_price": pos.average_price,
+                "qty": pos.quantity
+            })
+        return results
+
 market_controller = MarketDataController()

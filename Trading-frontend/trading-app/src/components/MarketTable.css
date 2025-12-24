@@ -1,0 +1,108 @@
+.market-table-container {
+    width: 100%;
+    overflow-x: auto;
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    padding: 1rem;
+    box-shadow: var(--shadow);
+}
+
+.market-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.market-table th,
+.market-table td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+.market-table th {
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 0.875rem;
+}
+
+.company-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.company-name {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.company-sector {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.mini-chart {
+    display: flex;
+    align-items: flex-end;
+    height: 30px;
+}
+
+.candle {
+    background-color: var(--text-secondary);
+}
+
+.candle.green {
+    background-color: var(--success);
+}
+
+.candle.red {
+    background-color: var(--danger);
+}
+
+.position-badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.position-badge.long {
+    background-color: rgba(16, 185, 129, 0.1);
+    color: var(--success);
+}
+
+.position-badge.short {
+    background-color: rgba(239, 68, 68, 0.1);
+    color: var(--danger);
+}
+
+.action-buttons {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.btn-buy,
+.btn-sell {
+    padding: 0.4rem 1rem;
+    border-radius: var(--radius);
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.875rem;
+    transition: transform 0.2s;
+}
+
+.btn-buy {
+    background-color: var(--success);
+    color: white;
+}
+
+.btn-sell {
+    background-color: var(--danger);
+    color: white;
+}
+
+.btn-buy:hover,
+.btn-sell:hover {
+    transform: translateY(-1px);
+    opacity: 0.9;
+}

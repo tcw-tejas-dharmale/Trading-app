@@ -1,115 +1,76 @@
 import React, { useState, useEffect } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { fetchInstruments } from '../services/api';
-import { LogOut, User, TrendingUp } from 'lucide-react';
+import { User } from 'lucide-react';
 import './Navbar.css';
 
 const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
-    const { user, login, logout } = useAuth();
+    const { user } = useAuth();
+    const location = useLocation();
+    const navigate = useNavigate();
     const [instruments, setInstruments] = useState([]);
-    const [showLogin, setShowLogin] = useState(false);
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
 
     useEffect(() => {
-        if (user) {
-            loadInstruments();
-        }
-    }, [user]);
+        loadInstruments();
+    }, []);
 
     const loadInstruments = async () => {
         try {
             const data = await fetchInstruments();
             setInstruments(data);
-            if (data.length > 0 && !selectedInstrument) {
-                onInstrumentChange(data[0]);
-            }
         } catch (error) {
             console.error("Failed to load instruments", error);
         }
     };
 
-    const handleLogin = async (e) => {
-        e.preventDefault();
-        const success = await login(email, password);
-        if (success) setShowLogin(false);
-        else alert("Login failed");
+    // Set default instrument when on dashboard and none selected
+    useEffect(() => {
+        if (location.pathname === '/dashboard' && instruments.length > 0 && !selectedInstrument) {
+            onInstrumentChange(instruments[0]);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [location.pathname, instruments]);
+
+    const handleGetInstruments = async () => {
+        await loadInstruments();
+        if (location.pathname !== '/dashboard') {
+            navigate('/dashboard');
+        }
     };
 
     return (
         <nav className="navbar">
             <div className="navbar-content container">
-                <div className="flex items-center gap-4">
-                    <div className="logo flex items-center gap-2">
-                        <TrendingUp color="var(--accent)" size={28} />
-                        <span className="font-bold text-lg wyse-logo">WyseTrade</span>
-                    </div>
-
-                    {user && (
-                        <div className="instrument-selector">
-                            <select
-                                className="input"
-                                value={selectedInstrument?.instrument_token || ''}
-                                onChange={(e) => {
-                                    const inst = instruments.find(i => i.instrument_token === parseInt(e.target.value));
-                                    onInstrumentChange(inst);
-                                }}
-                            >
-                                {instruments.map(inst => (
-                                    <option key={inst.instrument_token} value={inst.instrument_token}>
-                                        {inst.name} ({inst.tradingsymbol})
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
+                <div className="navbar-left">
+                    <Link to="/" className="brand-logo">
+                        <span className="brand-mark" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none">
+                                <path d="M4 16l5-5 4 4 7-8" />
+                                <path d="M4 20h16" opacity="0.6" />
+                            </svg>
+                        </span>
+                        <span className="brand-name">WysTrade</span>
+                    </Link>
                 </div>
 
                 <div className="navbar-actions">
-                    {user ? (
-                        <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-2 text-sm text-secondary">
-                                <User size={16} />
-                                <span>Logged In</span>
-                            </div>
-                            <button onClick={logout} className="btn btn-outline text-sm flex items-center gap-2">
-                                <LogOut size={16} />
-                                Logout
-                            </button>
-                        </div>
-                    ) : (
-                        <button onClick={() => setShowLogin(!showLogin)} className="btn btn-primary">
-                            Login
-                        </button>
-                    )}
+                    <Link
+                        to={user ? '/profile' : '/login'}
+                        className="navbar-icon-button"
+                        aria-label={user ? 'Profile' : 'Sign In'}
+                    >
+                        <User size={18} />
+                    </Link>
+                    <button
+                        type="button"
+                        className="btn btn-primary get-instruments-btn"
+                        onClick={handleGetInstruments}
+                    >
+                        Get Instruments
+                    </button>
                 </div>
             </div>
-
-            {showLogin && !user && (
-                <div className="login-modal-overlay">
-                    <div className="login-modal card">
-                        <h2 className="text-lg font-bold mb-4">Login to WyseTrade</h2>
-                        <form onSubmit={handleLogin} className="flex flex-column gap-4">
-                            <input
-                                type="email"
-                                placeholder="Email"
-                                className="input w-full"
-                                value={email}
-                                onChange={e => setEmail(e.target.value)}
-                            />
-                            <input
-                                type="password"
-                                placeholder="Password"
-                                className="input w-full"
-                                value={password}
-                                onChange={e => setPassword(e.target.value)}
-                            />
-                            <button type="submit" className="btn btn-primary w-full">Sign In</button>
-                            <button type="button" onClick={() => setShowLogin(false)} className="btn text-sm w-full">Cancel</button>
-                        </form>
-                    </div>
-                </div>
-            )}
         </nav>
     );
 };

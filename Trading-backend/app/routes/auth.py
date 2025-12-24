@@ -67,6 +67,7 @@ def create_user(
     new_user = {
         "id": user_id,
         "email": user_in.email,
+        "name": user_in.name,
         "hashed_password": security.get_password_hash(user_in.password),
         "is_active": True
     }

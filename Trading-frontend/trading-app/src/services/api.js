@@ -10,6 +10,8 @@ api.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
+}, (error) => {
+  return Promise.reject(error);
 });
 
 export const login = async (email, password) => {
@@ -17,6 +19,11 @@ export const login = async (email, password) => {
   formData.append('username', email); // OAuth2PasswordRequestForm expects username
   formData.append('password', password);
   const response = await api.post('/login/access-token', formData);
+  return response.data;
+};
+
+export const signup = async (email, password, name) => {
+  const response = await api.post('/signup', { email, password, name });
   return response.data;
 };
 
@@ -39,6 +46,30 @@ export const fetchHistoricalData = async (instrumentToken, scale) => {
   const response = await api.get('/market/historical-data', {
     params: { instrument_token: instrumentToken, scale },
   });
+  return response.data;
+};
+
+export const fetchFinancialHistory = async (years = 5) => {
+  const response = await api.get('/market/financial-history', {
+    params: { years },
+  });
+  return response.data;
+};
+
+export const fetchCompetitors = async () => {
+  const response = await api.get('/market/competitors');
+  return response.data;
+};
+
+export const fetchROIProjection = async (initialInvestment = 10000, years = 5) => {
+  const response = await api.get('/market/roi-projection', {
+    params: { initial_investment: initialInvestment, years },
+  });
+  return response.data;
+};
+
+export const fetchRiskAssessment = async () => {
+  const response = await api.get('/market/risk-assessment');
   return response.data;
 };
 
