@@ -4,6 +4,12 @@ import { TrendingUp, BarChart3, Shield, Zap, ArrowRight, CheckCircle } from 'luc
 import './HomePage.css';
 
 const HomePage = () => {
+  const [showGetInstruments, setShowGetInstruments] = React.useState(false);
+
+  const handleGetStarted = () => {
+    setShowGetInstruments(true);
+  };
+
   return (
     <div className="homepage">
       {/* Hero Section */}
@@ -15,13 +21,16 @@ const HomePage = () => {
               <span className="gradient-text"> Precision Trading</span>
             </h1>
             <p className="hero-subtitle">
-              Advanced charting, real-time market data, and powerful trading strategies 
+              Advanced charting, real-time market data, and powerful trading strategies
               at your fingertips. Start trading smarter today.
             </p>
             <div className="hero-cta">
               <Link to="/dashboard" className="btn btn-primary btn-large">
                 Get Started
                 <ArrowRight size={20} />
+              </Link>
+              <Link to="/help" className="btn btn-outline btn-large">
+                Learn More
               </Link>
             </div>
             <div className="hero-features">
@@ -53,7 +62,7 @@ const HomePage = () => {
               </div>
               <h3 className="feature-title">Advanced Charting</h3>
               <p className="feature-description">
-                Interactive charts with multiple timeframes, indicators, and drawing tools 
+                Interactive charts with multiple timeframes, indicators, and drawing tools
                 to help you make informed trading decisions.
               </p>
             </div>
@@ -64,7 +73,7 @@ const HomePage = () => {
               </div>
               <h3 className="feature-title">Real-Time Data</h3>
               <p className="feature-description">
-                Access live market data and historical information with low latency 
+                Access live market data and historical information with low latency
                 to stay ahead of market movements.
               </p>
             </div>
@@ -75,7 +84,7 @@ const HomePage = () => {
               </div>
               <h3 className="feature-title">Trading Strategies</h3>
               <p className="feature-description">
-                Apply powerful trading strategies including Moving Averages, RSI, 
+                Apply powerful trading strategies including Moving Averages, RSI,
                 and Bollinger Bands to identify opportunities.
               </p>
             </div>
@@ -86,7 +95,7 @@ const HomePage = () => {
               </div>
               <h3 className="feature-title">Secure & Reliable</h3>
               <p className="feature-description">
-                Your data is protected with industry-standard security measures 
+                Your data is protected with industry-standard security measures
                 and our platform is built for reliability.
               </p>
             </div>

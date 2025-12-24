@@ -19,7 +19,6 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
     const [chartType, setChartType] = useState('candlestick'); // 'candlestick', 'line', or 'bar'
     const [tooltipData, setTooltipData] = useState(null);
     const [hoveredRow, setHoveredRow] = useState(null);
-    const preferredScales = ['1m', '5m', '2d', '4d'];
 
     const loadOptions = async () => {
         try {
@@ -104,6 +103,30 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
 
     return (
         <div className="enhanced-dashboard container">
+            {/* Instrument Tabs */}
+            <div className="instrument-tabs-section">
+                <div className="instrument-tabs">
+                    <button
+                        className={`instrument-tab ${selectedInstrumentTab === 'nifty' ? 'active' : ''}`}
+                        onClick={() => setSelectedInstrumentTab('nifty')}
+                    >
+                        📊 Nifty 50
+                    </button>
+                    <button
+                        className={`instrument-tab ${selectedInstrumentTab === 'banknifty' ? 'active' : ''}`}
+                        onClick={() => setSelectedInstrumentTab('banknifty')}
+                    >
+                        🏦 Bank Nifty
+                    </button>
+                    <button
+                        className={`instrument-tab ${selectedInstrumentTab === 'openposition' ? 'active' : ''}`}
+                        onClick={() => setSelectedInstrumentTab('openposition')}
+                    >
+                        📈 Open Position
+                    </button>
+                </div>
+            </div>
+
             {/* Toolbar */}
             <div className="toolbar card">
                 <div className="flex flex-wrap gap-6 items-center w-full">
