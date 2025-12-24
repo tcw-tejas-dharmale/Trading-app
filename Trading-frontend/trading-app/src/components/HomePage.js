@@ -4,42 +4,63 @@ import { TrendingUp, BarChart3, Shield, Zap, ArrowRight, CheckCircle } from 'luc
 import './HomePage.css';
 
 const HomePage = () => {
+  const [showGetInstruments, setShowGetInstruments] = React.useState(false);
+
+  const handleGetStarted = () => {
+    setShowGetInstruments(true);
+  };
+
   return (
     <div className="homepage">
       {/* Hero Section */}
       <section className="hero-section">
-        <div className="container">
-          <div className="hero-content">
-            <h1 className="hero-title">
-              Master the Markets with
-              <span className="gradient-text"> Precision Trading</span>
-            </h1>
-            <p className="hero-subtitle">
-              Advanced charting, real-time market data, and powerful trading strategies 
-              at your fingertips. Start trading smarter today.
-            </p>
-            <div className="hero-cta">
-              <Link to="/dashboard" className="btn btn-primary btn-large">
-                Get Started
-                <ArrowRight size={20} />
-              </Link>
-              <Link to="/help" className="btn btn-outline btn-large">
-                Learn More
-              </Link>
+        <div className="hero-container">
+          <div className="hero-left">
+            <div className="hero-content">
+              <h1 className="hero-title">
+                Master the Markets with
+                <span className="gradient-text"> Precision Trading</span>
+              </h1>
+              <p className="hero-subtitle">
+                Advanced charting, real-time market data, and powerful trading strategies 
+                at your fingertips. Start trading smarter today.
+              </p>
+              <div className="hero-cta">
+                <Link to="/dashboard" onClick={handleGetStarted} className="btn btn-primary btn-large">
+                  Get Started
+                  <ArrowRight size={20} />
+                </Link>
+                <Link to="/help" className="btn btn-outline btn-large">
+                  Learn More
+                </Link>
+              </div>
             </div>
-            <div className="hero-features">
-              <div className="hero-feature-item">
-                <CheckCircle size={20} className="feature-icon" />
-                <span>No signup required</span>
+          </div>
+          {showGetInstruments && (
+            <div className="hero-right">
+              <div className="get-instruments-box">
+                <h3>Trading Instruments</h3>
+                <p>Click the "Get Instruments" button in the navbar to load available trading instruments and start analyzing market data.</p>
+                <div className="instruments-preview">
+                  <div className="instrument-item">📊 Nifty 50</div>
+                  <div className="instrument-item">🏦 Bank Nifty</div>
+                  <div className="instrument-item">📈 Various Stocks</div>
+                </div>
               </div>
-              <div className="hero-feature-item">
-                <CheckCircle size={20} className="feature-icon" />
-                <span>Real-time data</span>
-              </div>
-              <div className="hero-feature-item">
-                <CheckCircle size={20} className="feature-icon" />
-                <span>Advanced analytics</span>
-              </div>
+            </div>
+          )}
+          <div className="hero-features">
+            <div className="hero-feature-item">
+              <CheckCircle size={20} className="feature-icon" />
+              <span>No signup required</span>
+            </div>
+            <div className="hero-feature-item">
+              <CheckCircle size={20} className="feature-icon" />
+              <span>Real-time data</span>
+            </div>
+            <div className="hero-feature-item">
+              <CheckCircle size={20} className="feature-icon" />
+              <span>Advanced analytics</span>
             </div>
           </div>
         </div>

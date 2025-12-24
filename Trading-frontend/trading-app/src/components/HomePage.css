@@ -5,19 +5,93 @@
 /* Hero Section */
 .hero-section {
   padding: 4rem 0 6rem;
-  text-align: center;
   background:
     radial-gradient(800px 380px at 15% 10%, rgba(31, 191, 158, 0.18), transparent 60%),
     linear-gradient(180deg, rgba(12, 20, 30, 0.85) 0%, rgba(11, 17, 24, 0) 70%);
 }
 
-.hero-content {
-  max-width: 900px;
+.hero-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3rem;
+  align-items: center;
+  max-width: 1200px;
   margin: 0 auto;
+  padding: 0 2rem;
+}
+
+.hero-left {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.hero-content {
+  max-width: 550px;
+  text-align: left;
+}
+
+.hero-right {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.get-instruments-box {
+  background: linear-gradient(135deg, rgba(31, 191, 158, 0.15) 0%, rgba(56, 189, 248, 0.1) 100%);
+  border: 1px solid rgba(31, 191, 158, 0.3);
+  border-radius: 0.75rem;
+  padding: 2rem;
+  backdrop-filter: blur(10px);
+  animation: slideInRight 0.5s ease-out;
+}
+
+.get-instruments-box h3 {
+  color: var(--accent);
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.get-instruments-box p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin-bottom: 1.5rem;
+}
+
+.instruments-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.instrument-item {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(31, 191, 158, 0.2);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+}
+
+.instrument-item:hover {
+  background: rgba(31, 191, 158, 0.1);
+  border-color: var(--accent);
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .hero-title {
-  font-size: clamp(2.5rem, 5vw, 4rem);
+  font-size: clamp(2.2rem, 5vw, 3.5rem);
   font-weight: 800;
   line-height: 1.2;
   margin-bottom: 1.5rem;
@@ -61,7 +135,7 @@
 .hero-features {
   display: flex;
   gap: 2rem;
-  justify-content: center;
+  justify-content: flex-start;
   flex-wrap: wrap;
   margin-top: 3rem;
 }
@@ -170,6 +244,27 @@
   line-height: 1.6;
 }
 
+@media (max-width: 1024px) {
+  .hero-container {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+
+  .hero-left,
+  .hero-right {
+    justify-content: center;
+  }
+
+  .hero-content {
+    text-align: center;
+    max-width: 100%;
+  }
+
+  .hero-features {
+    justify-content: center;
+  }
+}
+
 @media (max-width: 768px) {
   .hero-section {
     padding: 3rem 0 4rem;
@@ -188,6 +283,7 @@
   .hero-features {
     flex-direction: column;
     gap: 1rem;
+    justify-content: center;
   }
 
   .hero-cta {
@@ -198,6 +294,10 @@
   .btn-large {
     width: 100%;
     justify-content: center;
+  }
+
+  .get-instruments-box {
+    padding: 1.5rem;
   }
 }
 

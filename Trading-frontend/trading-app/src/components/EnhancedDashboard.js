@@ -22,6 +22,7 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
     const [showMA50, setShowMA50] = useState(false); // Hidden by default
     const [tooltipData, setTooltipData] = useState(null);
     const [hoveredRow, setHoveredRow] = useState(null);
+    const [selectedInstrumentTab, setSelectedInstrumentTab] = useState('nifty'); // 'nifty', 'banknifty', 'openposition'
 
     const loadOptions = async () => {
         try {
@@ -113,6 +114,30 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
 
     return (
         <div className="enhanced-dashboard container">
+            {/* Instrument Tabs */}
+            <div className="instrument-tabs-section">
+                <div className="instrument-tabs">
+                    <button
+                        className={`instrument-tab ${selectedInstrumentTab === 'nifty' ? 'active' : ''}`}
+                        onClick={() => setSelectedInstrumentTab('nifty')}
+                    >
+                        📊 Nifty 50
+                    </button>
+                    <button
+                        className={`instrument-tab ${selectedInstrumentTab === 'banknifty' ? 'active' : ''}`}
+                        onClick={() => setSelectedInstrumentTab('banknifty')}
+                    >
+                        🏦 Bank Nifty
+                    </button>
+                    <button
+                        className={`instrument-tab ${selectedInstrumentTab === 'openposition' ? 'active' : ''}`}
+                        onClick={() => setSelectedInstrumentTab('openposition')}
+                    >
+                        📈 Open Position
+                    </button>
+                </div>
+            </div>
+
             {/* Toolbar */}
             <div className="toolbar card">
                 <div className="flex flex-wrap gap-6 items-center w-full">
