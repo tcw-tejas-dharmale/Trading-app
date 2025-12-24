@@ -13,6 +13,24 @@
     width: 100%;
 }
 
+.toolbar.card {
+    width: 100%;
+    padding: 2rem;
+}
+
+.toolbar .control-group {
+    min-width: 220px;
+}
+
+.toolbar .control-group .btn {
+    min-width: 56px;
+}
+
+.scan-stock-btn {
+    width: 100%;
+    justify-content: center;
+}
+
 .chart-header {
     display: flex;
     justify-content: space-between;
@@ -588,4 +606,3 @@
         width: 100%;
     }
 }
-

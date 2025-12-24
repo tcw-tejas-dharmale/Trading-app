@@ -51,6 +51,10 @@
   color: var(--text-primary);
 }
 
+.login-title-center {
+  text-align: center;
+}
+
 .login-subtitle {
   color: var(--text-secondary);
   font-size: 0.9rem;
@@ -169,6 +173,12 @@
 .login-footer {
   margin-top: 2rem;
   text-align: center;
+}
+
+.login-footer-actions {
+  display: grid;
+  gap: 0.4rem;
+  justify-items: center;
 }
 
 .login-footer-text {

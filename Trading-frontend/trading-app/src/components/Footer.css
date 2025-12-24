@@ -142,6 +142,15 @@
   font-size: 0.875rem;
 }
 
+.footer-actions {
+  margin-top: 0.75rem;
+}
+
+.footer-actions .btn-sm {
+  padding: 0.4rem 0.9rem;
+  font-size: 0.85rem;
+}
+
 .footer-disclaimer {
   font-size: 0.75rem;
   color: var(--text-secondary);

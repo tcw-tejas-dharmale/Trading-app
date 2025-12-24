@@ -6,10 +6,11 @@ import { User } from 'lucide-react';
 import './Navbar.css';
 
 const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
-    const { user } = useAuth();
+    const { user, logout } = useAuth();
     const location = useLocation();
     const navigate = useNavigate();
     const [instruments, setInstruments] = useState([]);
+    const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
     useEffect(() => {
         loadInstruments();
@@ -31,9 +32,16 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [location.pathname, instruments]);
+    
+    useEffect(() => {
+        setIsUserMenuOpen(false);
+    }, [location.pathname]);
 
-    const handleGetInstruments = async () => {
-        await loadInstruments();
+    const handleInstrumentSelect = (event) => {
+        const value = event.target.value;
+        if (!value) return;
+        const inst = instruments.find(i => i.instrument_token === parseInt(value));
+        if (inst) onInstrumentChange(inst);
         if (location.pathname !== '/dashboard') {
             navigate('/dashboard');
         }
@@ -55,20 +63,61 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
                 </div>
 
                 <div className="navbar-actions">
-                    <Link
-                        to={user ? '/profile' : '/login'}
-                        className="navbar-icon-button"
-                        aria-label={user ? 'Profile' : 'Sign In'}
-                    >
-                        <User size={18} />
-                    </Link>
-                    <button
-                        type="button"
-                        className="btn btn-primary get-instruments-btn"
-                        onClick={handleGetInstruments}
-                    >
-                        Get Instruments
-                    </button>
+                    <div className="instrument-dropdown">
+                        <select
+                            className="input instrument-select"
+                            onFocus={loadInstruments}
+                            value={selectedInstrument?.instrument_token || ''}
+                            onChange={handleInstrumentSelect}
+                        >
+                            <option value="">Get Instruments</option>
+                            {instruments.map(inst => (
+                                <option key={inst.instrument_token} value={inst.instrument_token}>
+                                    {inst.name} ({inst.tradingsymbol})
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="user-menu-wrapper">
+                        <Link
+                            to={user ? '/profile' : '/login'}
+                            className="navbar-icon-button"
+                            aria-label={user ? 'Profile' : 'Sign In'}
+                            onClick={(event) => {
+                                if (!user) return;
+                                event.preventDefault();
+                                setIsUserMenuOpen((open) => !open);
+                            }}
+                        >
+                            <User size={18} />
+                        </Link>
+                        {user && (
+                            <button
+                                type="button"
+                                className="btn btn-outline navbar-logout"
+                                onClick={logout}
+                            >
+                                Log out
+                            </button>
+                        )}
+                        {user && isUserMenuOpen && (
+                            <div className="user-menu">
+                                <Link to="/profile" className="user-menu-item">
+                                    Profile
+                                </Link>
+                                <button
+                                    type="button"
+                                    className="user-menu-item"
+                                    onClick={() => {
+                                        setIsUserMenuOpen(false);
+                                        logout();
+                                    }}
+                                >
+                                    Log out
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
         </nav>

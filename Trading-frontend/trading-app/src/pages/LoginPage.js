@@ -10,7 +10,7 @@ const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, user, logout } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -69,7 +69,7 @@ const LoginPage = () => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="login-form">
+          <form onSubmit={handleSubmit} className="login-form" autoComplete="off">
             <div className="form-group">
               <label htmlFor="email" className="form-label">
                 Email Address
@@ -84,7 +84,7 @@ const LoginPage = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={loading}
-                  autoComplete="email"
+                  autoComplete="off"
                 />
               </div>
             </div>
@@ -103,7 +103,7 @@ const LoginPage = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={loading}
-                  autoComplete="current-password"
+                  autoComplete="off"
                 />
                 <button
                   type="button"
@@ -126,12 +126,23 @@ const LoginPage = () => {
           </form>
 
           <div className="login-footer">
-            <p className="login-footer-text">
-              New here?{' '}
-              <Link to="/dashboard" className="login-footer-link">
-                Explore the dashboard
-              </Link>
-            </p>
+            {user ? (
+              <button type="button" className="btn btn-outline btn-block" onClick={logout}>
+                Log out
+              </button>
+            ) : (
+              <div className="login-footer-actions">
+                <p className="login-footer-text">
+                  No account yet?{' '}
+                  <Link to="/signup" className="login-footer-link">
+                    Create account
+                  </Link>
+                </p>
+                <p className="login-footer-text">
+                  
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>

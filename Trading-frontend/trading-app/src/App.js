@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
-import Footer from './components/Footer';
 import Dashboard from './components/Dashboard';
 import HomePage from './components/HomePage';
 import LoginPage from './pages/LoginPage';
+import SignupPage from './pages/SignupPage';
 import ProfilePage from './pages/ProfilePage';
 import HelpPage from './pages/HelpPage';
 import { AuthProvider } from './context/AuthContext';
@@ -29,6 +29,7 @@ function App() {
                 element={<Dashboard selectedInstrument={selectedInstrument} />} 
               />
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/signup" element={<SignupPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/help" element={<HelpPage />} />
               {/* Placeholder routes for footer links */}
@@ -38,7 +39,6 @@ function App() {
               <Route path="/terms" element={<HelpPage />} />
             </Routes>
           </main>
-          <Footer />
         </div>
       </AuthProvider>
     </Router>

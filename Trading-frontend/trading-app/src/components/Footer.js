@@ -1,9 +1,12 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Mail, Twitter, Linkedin, Facebook, Github } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import './Footer.css';
 
 const Footer = () => {
+  const { user, logout } = useAuth();
+
   return (
     <footer className="footer">
       <div className="footer-container container">
@@ -92,6 +95,17 @@ const Footer = () => {
           <p className="footer-disclaimer">
             Trading involves substantial risk of loss. Please trade responsibly.
           </p>
+          <div className="footer-actions">
+            {user ? (
+              <button type="button" className="btn btn-outline btn-sm" onClick={logout}>
+                Log out
+              </button>
+            ) : (
+              <Link to="/login" className="btn btn-outline btn-sm">
+                Sign in
+              </Link>
+            )}
+          </div>
         </div>
       </div>
     </footer>

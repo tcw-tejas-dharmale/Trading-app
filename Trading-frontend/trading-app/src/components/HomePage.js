@@ -23,9 +23,6 @@ const HomePage = () => {
                 Get Started
                 <ArrowRight size={20} />
               </Link>
-              <Link to="/help" className="btn btn-outline btn-large">
-                Learn More
-              </Link>
             </div>
             <div className="hero-features">
               <div className="hero-feature-item">
@@ -106,7 +103,7 @@ const HomePage = () => {
               Join thousands of traders using WysTrade to make smarter trading decisions.
             </p>
             <Link to="/dashboard" className="btn btn-primary btn-large">
-              Explore Dashboard
+              Explore the dashboard
               <ArrowRight size={20} />
             </Link>
           </div>

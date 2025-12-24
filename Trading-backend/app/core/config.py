@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from sqlalchemy.engine import URL
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Trading App"
@@ -26,6 +27,15 @@ class Settings(BaseSettings):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.DATABASE_URL = f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        self.DATABASE_URL = str(
+            URL.create(
+                "postgresql",
+                username=self.POSTGRES_USER,
+                password=self.POSTGRES_PASSWORD,
+                host=self.POSTGRES_SERVER,
+                port=self.POSTGRES_PORT,
+                database=self.POSTGRES_DB,
+            )
+        )
 
 settings = Settings()

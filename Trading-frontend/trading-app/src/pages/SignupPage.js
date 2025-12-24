@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { User, Lock, Mail, AlertCircle } from 'lucide-react';
+import { User, Lock, Mail, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import './LoginPage.css'; // Reuse Login styles
 
 const SignupPage = () => {
@@ -9,6 +9,8 @@ const SignupPage = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const { signup } = useAuth(); // Assuming signup function exists in context, otherwise we need to implement it
@@ -45,16 +47,7 @@ const SignupPage = () => {
         <div className="login-page">
             <div className="login-container">
                 <div className="login-card login-card-compact">
-                    <div className="login-brand">
-                        <span className="brand-mark" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="none">
-                                <path d="M4 16l5-5 4 4 7-8" />
-                                <path d="M4 20h16" opacity="0.6" />
-                            </svg>
-                        </span>
-                        <span className="brand-name">WysTrade</span>
-                    </div>
-                    <h1 className="login-title">Create account</h1>
+                    <h1 className="login-title login-title-center">Create account</h1>
                     <p className="login-subtitle">Set up your profile in seconds.</p>
 
                     {error && (
@@ -64,7 +57,7 @@ const SignupPage = () => {
                         </div>
                     )}
 
-                    <form onSubmit={handleSubmit} className="login-form">
+                    <form onSubmit={handleSubmit} className="login-form" autoComplete="off">
                         <div className="form-group">
                             <label className="form-label">Name</label>
                             <div className="input-wrapper">
@@ -76,6 +69,7 @@ const SignupPage = () => {
                                     onChange={(e) => setName(e.target.value)}
                                     required
                                     placeholder="Full Name"
+                                    autoComplete="off"
                                 />
                             </div>
                         </div>
@@ -90,6 +84,7 @@ const SignupPage = () => {
                                     onChange={(e) => setEmail(e.target.value)}
                                     required
                                     placeholder="Email Address"
+                                    autoComplete="off"
                                 />
                             </div>
                         </div>
@@ -98,13 +93,22 @@ const SignupPage = () => {
                             <div className="input-wrapper">
                                 <Lock size={18} className="input-icon" />
                                 <input
-                                    type="password"
+                                    type={showPassword ? 'text' : 'password'}
                                     className="form-input"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     required
                                     placeholder="Password"
+                                    autoComplete="new-password"
                                 />
+                                <button
+                                    type="button"
+                                    className="password-toggle"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    tabIndex={-1}
+                                >
+                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
                             </div>
                         </div>
                         <div className="form-group">
@@ -112,13 +116,22 @@ const SignupPage = () => {
                             <div className="input-wrapper">
                                 <Lock size={18} className="input-icon" />
                                 <input
-                                    type="password"
+                                    type={showConfirmPassword ? 'text' : 'password'}
                                     className="form-input"
                                     value={confirmPassword}
                                     onChange={(e) => setConfirmPassword(e.target.value)}
                                     required
                                     placeholder="Confirm Password"
+                                    autoComplete="new-password"
                                 />
+                                <button
+                                    type="button"
+                                    className="password-toggle"
+                                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                    tabIndex={-1}
+                                >
+                                    {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
                             </div>
                         </div>
                         <button disabled={loading} className="btn btn-primary btn-block" type="submit">

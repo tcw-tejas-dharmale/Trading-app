@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { fetchScales, fetchStrategies, fetchHistoricalData, fetchFinancialHistory, fetchCompetitors, fetchROIProjection, fetchRiskAssessment } from '../services/api';
 import CandlestickChart from './CandlestickChart';
 import ZoomableLineChart from './ZoomableLineChart';
-import { Clock, Sliders, TrendingUp, TrendingDown, Info, Star, Shield, Target, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Clock, Sliders, TrendingUp, TrendingDown, Info, Shield, Target, AlertCircle, CheckCircle2, Star, Search } from 'lucide-react';
 import './EnhancedDashboard.css';
 
 const EnhancedDashboard = ({ selectedInstrument }) => {
@@ -17,11 +17,9 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
     const [riskAssessment, setRiskAssessment] = useState(null);
     const [loading, setLoading] = useState(false);
     const [chartType, setChartType] = useState('candlestick'); // 'candlestick', 'line', or 'bar'
-    const [showVolume, setShowVolume] = useState(false); // Volume bar chart is now separate
-    const [showMA20, setShowMA20] = useState(false); // Hidden by default
-    const [showMA50, setShowMA50] = useState(false); // Hidden by default
     const [tooltipData, setTooltipData] = useState(null);
     const [hoveredRow, setHoveredRow] = useState(null);
+    const preferredScales = ['1m', '5m', '2d', '4d'];
 
     const loadOptions = async () => {
         try {
@@ -29,9 +27,15 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                 fetchScales(),
                 fetchStrategies()
             ]);
-            setScales(scalesData);
+            const mergedScales = [...preferredScales];
+            scalesData.forEach((scale) => {
+                if (!mergedScales.includes(scale)) {
+                    mergedScales.push(scale);
+                }
+            });
+            setScales(mergedScales);
             setStrategies(strategiesData);
-            if (scalesData.length > 0) setSelectedScale(scalesData[1] || scalesData[0]);
+            if (mergedScales.length > 0) setSelectedScale(mergedScales[1] || mergedScales[0]);
             if (strategiesData.length > 0) setSelectedStrategy(strategiesData[0].id);
         } catch (error) {
             console.error("Failed to load dashboard options", error);
@@ -81,35 +85,22 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedInstrument, selectedScale, selectedStrategy]);
 
+    const handleScanStocks = () => {
+        if (selectedInstrument && selectedScale) {
+            loadData();
+        }
+    };
+
     const formatCurrency = (value) => {
         if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
         if (value >= 1000) return `$${(value / 1000).toFixed(2)}K`;
         return `$${value.toFixed(2)}`;
     };
 
-    const testimonials = [
-        {
-            name: "Sarah Johnson",
-            role: "Portfolio Manager",
-            company: "Tech Investments Inc.",
-            content: "This platform has transformed how we analyze market trends. The candlestick charts and historical data have been invaluable.",
-            rating: 5
-        },
-        {
-            name: "Michael Chen",
-            role: "Independent Trader",
-            company: "Self-employed",
-            content: "The ROI projections and risk assessment features help me make more informed decisions. Highly recommend!",
-            rating: 5
-        },
-        {
-            name: "Emily Rodriguez",
-            role: "Financial Analyst",
-            company: "Global Finance Corp",
-            content: "The competitor comparison and detailed financial history make this platform stand out from the rest.",
-            rating: 5
-        }
-    ];
+    const formatScaleLabel = (scale) => {
+        if (typeof scale !== 'string') return scale;
+        return scale.endsWith('d') ? scale.toUpperCase() : scale;
+    };
 
     return (
         <div className="enhanced-dashboard container">
@@ -127,7 +118,7 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                                     className={`btn text-sm ${selectedScale === scale ? 'btn-primary' : 'btn-outline'}`}
                                     onClick={() => setSelectedScale(scale)}
                                 >
-                                    {scale}
+                                    {formatScaleLabel(scale)}
                                 </button>
                             ))}
                         </div>
@@ -152,26 +143,16 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
 
                     <div className="control-group">
                         <label className="text-secondary text-sm flex items-center gap-2 mb-2">
-                            Moving Averages
+                            <Search size={16} /> Scan Stocks
                         </label>
-                        <div className="flex gap-2">
-                            <label className="checkbox-label-sm">
-                                <input 
-                                    type="checkbox" 
-                                    checked={showMA20}
-                                    onChange={(e) => setShowMA20(e.target.checked)}
-                                />
-                                <span>MA 20</span>
-                            </label>
-                            <label className="checkbox-label-sm">
-                                <input 
-                                    type="checkbox" 
-                                    checked={showMA50}
-                                    onChange={(e) => setShowMA50(e.target.checked)}
-                                />
-                                <span>MA 50</span>
-                            </label>
-                        </div>
+                        <button
+                            type="button"
+                            className="btn btn-outline scan-stock-btn"
+                            onClick={handleScanStocks}
+                            disabled={!selectedInstrument}
+                        >
+                            Run Scan
+                        </button>
                     </div>
                 </div>
             </div>
@@ -219,15 +200,15 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                                     <ZoomableLineChart
                                         data={marketData}
                                         label={`${selectedInstrument?.name} - Close Price`}
-                                        showMA20={showMA20}
-                                        showMA50={showMA50}
+                                        showMA20={false}
+                                        showMA50={false}
                                     />
                                 ) : (
                                     <CandlestickChart
                                         data={marketData}
                                         label={`${selectedInstrument?.name}`}
                                         showVolume={false}
-                                        showMovingAverage={showMA20 || showMA50}
+                                        showMovingAverage={false}
                                         chartMode="candlestick"
                                     />
                                 )}
@@ -246,9 +227,9 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                     <div className="financial-table-container card">
                         <div className="table-header">
                             <h3 className="table-title">5-Year Financial History</h3>
-                            <div className="info-icon-wrapper" 
-                                 onMouseEnter={() => setTooltipData("Quarterly revenue, profit margins, and year-over-year growth rates over the past 5 years")}
-                                 onMouseLeave={() => setTooltipData(null)}>
+                            <div className="info-icon-wrapper"
+                                onMouseEnter={() => setTooltipData("Quarterly revenue, profit margins, and year-over-year growth rates over the past 5 years")}
+                                onMouseLeave={() => setTooltipData(null)}>
                                 <Info size={18} className="info-icon" />
                                 {tooltipData && (
                                     <div className="tooltip">{tooltipData}</div>
@@ -269,7 +250,7 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                                 </thead>
                                 <tbody>
                                     {financialHistory.map((row, idx) => (
-                                        <tr 
+                                        <tr
                                             key={idx}
                                             onMouseEnter={() => setHoveredRow(idx)}
                                             onMouseLeave={() => setHoveredRow(null)}
@@ -421,72 +402,8 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                 )}
             </div>
 
-            {/* Testimonials Section */}
-            <div className="testimonials-section">
-                <h2 className="section-title">What Our Users Say</h2>
-                <div className="testimonials-grid">
-                    {testimonials.map((testimonial, idx) => (
-                        <div key={idx} className="testimonial-card card">
-                            <div className="testimonial-header">
-                                <div className="testimonial-author">
-                                    <div className="author-avatar">
-                                        {testimonial.name.charAt(0)}
-                                    </div>
-                                    <div>
-                                        <div className="author-name">{testimonial.name}</div>
-                                        <div className="author-role">{testimonial.role}</div>
-                                        <div className="author-company">{testimonial.company}</div>
-                                    </div>
-                                </div>
-                                <div className="testimonial-rating">
-                                    {[...Array(testimonial.rating)].map((_, i) => (
-                                        <Star key={i} size={16} className="star-icon" fill="currentColor" />
-                                    ))}
-                                </div>
-                            </div>
-                            <p className="testimonial-content">"{testimonial.content}"</p>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* CTA Section */}
-            <div className="cta-section-enhanced">
-                <div className="cta-card card">
-                    <div className="cta-content">
-                        <h2 className="cta-title">Ready to Start Trading Smart?</h2>
-                        <p className="cta-description">
-                            Join thousands of traders using our platform to make data-driven investment decisions. 
-                            Access real-time market data, comprehensive analytics, and professional tools.
-                        </p>
-                        <div className="cta-features">
-                            <div className="cta-feature">
-                                <CheckCircle2 size={20} />
-                                <span>Real-time market data</span>
-                            </div>
-                            <div className="cta-feature">
-                                <CheckCircle2 size={20} />
-                                <span>Advanced charting tools</span>
-                            </div>
-                            <div className="cta-feature">
-                                <CheckCircle2 size={20} />
-                                <span>ROI & risk analysis</span>
-                            </div>
-                            <div className="cta-feature">
-                                <CheckCircle2 size={20} />
-                                <span>Competitor insights</span>
-                            </div>
-                        </div>
-                        <div className="cta-buttons">
-                            <button className="btn btn-primary btn-large">Get Started Now</button>
-                            <button className="btn btn-outline btn-large">Schedule Demo</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
         </div>
     );
 };
 
 export default EnhancedDashboard;
-
