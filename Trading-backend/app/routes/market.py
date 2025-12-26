@@ -106,6 +106,38 @@ async def get_risk_assessment(
     """
     return financial_data_controller.assess_risk()
 
+@router.get("/nifty-50")
+async def get_nifty_50(
+    db: Any = Depends(database.get_db),
+    current_user: Optional[str] = Security(get_current_user_optional)
+):
+    """
+    Get Nifty 50 constituents.
+    """
+    return await market_controller.get_nifty50(db)
+
+@router.get("/bank-nifty")
+async def get_bank_nifty(
+    db: Any = Depends(database.get_db),
+    current_user: Optional[str] = Security(get_current_user_optional)
+):
+    """
+    Get Bank Nifty constituents.
+    """
+    return await market_controller.get_banknifty(db)
+
+@router.get("/positions")
+async def get_positions(
+    db: Any = Depends(database.get_db),
+    current_user: Optional[str] = Security(get_current_user_optional)
+):
+    """
+    Get Open Positions.
+    """
+    # For dev, if no user, pass a dummy user_id or handle in controller
+    user_id = current_user if current_user else 1
+    return await market_controller.get_positions(db, user_id)
+
 @router.post("/sync-instruments")
 async def sync_instruments(
     db: Any = Depends(database.get_db),

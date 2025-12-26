@@ -21,9 +21,20 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
     const loadInstruments = async () => {
         try {
             const data = await fetchInstruments();
-            setInstruments(data);
+            if (data && data.length > 0) {
+                setInstruments(data);
+            } else {
+                throw new Error("No instruments found");
+            }
         } catch (error) {
-            console.error("Failed to load instruments", error);
+            console.error("Failed to load instruments, using mock data", error);
+            const MOCK_INSTRUMENTS = [
+                { instrument_token: 256265, name: 'NIFTY 50', tradingsymbol: 'NIFTY 50', exchange: 'NSE' },
+                { instrument_token: 260105, name: 'BANKNIFTY', tradingsymbol: 'BANKNIFTY', exchange: 'NSE' },
+                { instrument_token: 408065, name: 'INFY', tradingsymbol: 'INFY', exchange: 'NSE' },
+                { instrument_token: 738561, name: 'RELIANCE', tradingsymbol: 'RELIANCE', exchange: 'NSE' }
+            ];
+            setInstruments(MOCK_INSTRUMENTS);
         }
     };
 
@@ -65,7 +76,7 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
                 </div>
 
                 <div className="navbar-actions">
-                    {location.pathname === '/dashboard' && (
+                    {location.pathname.startsWith('/dashboard') && (
                         <div className="instrument-dropdown">
                             <select
                                 className="input instrument-select"

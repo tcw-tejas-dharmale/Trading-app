@@ -27,7 +27,7 @@ ChartJS.register(
     zoomPlugin
 );
 
-const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage = true, chartMode = 'candlestick' }) => {
+const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage = true, chartMode = 'candlestick', scale = '5m' }) => {
     const chartRef = useRef(null);
     const safeData = Array.isArray(data) ? data : [];
 
@@ -59,16 +59,51 @@ const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage =
     }));
 
     // Prepare data for chart
-    const labels = safeData.map(d => new Date(d.date).toLocaleString([], { 
-        month: 'short', 
-        day: 'numeric', 
-        hour: '2-digit', 
-        minute: '2-digit' 
-    }));
+    const isDayOrAbove = ['1d', '2d', '1M'].includes(scale);
+    const labels = safeData.map(d => new Date(d.date).toLocaleString([],
+        isDayOrAbove
+            ? { month: 'short', day: 'numeric' } // Date only for larger scales
+            : { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' } // Date + Time for intraday
+    ));
 
-    // Volume data
+    // Prepare volume and color data early for potential volume chart use
     const volumeData = safeData.map(d => d.volume);
     const volumeColors = candleData.map(c => c.isBullish ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)');
+
+    const updateCandlestickYAxis = useCallback((chart) => {
+        const xScale = chart?.scales?.x;
+        const yScale = chart?.scales?.y;
+        if (!xScale || !yScale || candleData.length === 0) return;
+
+        const minIndex = Number.isFinite(xScale.min) ? Math.max(0, Math.floor(xScale.min)) : 0;
+        const maxIndex = Number.isFinite(xScale.max)
+            ? Math.min(candleData.length - 1, Math.ceil(xScale.max))
+            : candleData.length - 1;
+
+        let min = Number.POSITIVE_INFINITY;
+        let max = Number.NEGATIVE_INFINITY;
+        for (let i = minIndex; i <= maxIndex; i += 1) {
+            const candle = candleData[i];
+            if (!candle) continue;
+            min = Math.min(min, candle.low);
+            max = Math.max(max, candle.high);
+        }
+
+        if (!Number.isFinite(min) || !Number.isFinite(max)) return;
+        const padding = (max - min) * 0.05 || 1;
+        chart.options.scales.y.min = min - padding;
+        chart.options.scales.y.max = max + padding;
+    }, [candleData]);
+
+    useEffect(() => {
+        if (!chartRef.current) return;
+        const chart = chartRef.current;
+        // Only update Y-axis if in candlestick mode, or if safe to do so
+        if (chartMode === 'candlestick') {
+            updateCandlestickYAxis(chart);
+            chart.update('none');
+        }
+    }, [updateCandlestickYAxis, chartMode]);
 
     // If chart mode is volume, only show volume bars
     if (safeData.length === 0) {
@@ -78,7 +113,7 @@ const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage =
     if (chartMode === 'volume') {
         return (
             <div className="candlestick-chart-wrapper">
-                <Bar 
+                <Bar
                     data={{
                         labels,
                         datasets: [{
@@ -87,7 +122,7 @@ const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage =
                             backgroundColor: volumeColors,
                             maxBarThickness: 30,
                         }]
-                    }} 
+                    }}
                     options={{
                         responsive: true,
                         maintainAspectRatio: false,
@@ -107,7 +142,7 @@ const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage =
                             y: {
                                 position: 'left',
                                 grid: { color: '#334155' },
-                                ticks: { 
+                                ticks: {
                                     color: '#64748b',
                                     callback: (value) => {
                                         if (value >= 1000000) return (value / 1000000).toFixed(1) + 'M';
@@ -122,7 +157,7 @@ const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage =
                                 }
                             }
                         }
-                    }} 
+                    }}
                 />
             </div>
         );
@@ -171,8 +206,8 @@ const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage =
 
         return (
             <div className="candlestick-chart-wrapper">
-                <Line 
-                    data={{ labels, datasets }} 
+                <Line
+                    data={{ labels, datasets }}
                     options={{
                         responsive: true,
                         maintainAspectRatio: false,
@@ -206,7 +241,7 @@ const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage =
                                 title: { display: true, text: 'Price', color: '#94a3b8' }
                             }
                         }
-                    }} 
+                    }}
                 />
             </div>
         );
@@ -219,7 +254,7 @@ const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage =
             const ctx = chart.ctx;
             const yScale = chart.scales.y;
             const xScale = chart.scales.x;
-            
+
             const minIndex = Number.isFinite(xScale.min) ? Math.max(0, Math.floor(xScale.min)) : 0;
             const maxIndex = Number.isFinite(xScale.max)
                 ? Math.min(candleData.length - 1, Math.ceil(xScale.max))
@@ -237,14 +272,14 @@ const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage =
                 const lowY = yScale.getPixelForValue(candle.low);
                 const openY = yScale.getPixelForValue(candle.open);
                 const closeY = yScale.getPixelForValue(candle.close);
-                
+
                 const bodyTop = Math.min(openY, closeY);
                 const bodyBottom = Math.max(openY, closeY);
                 const bodyHeight = bodyBottom - bodyTop;
                 const bodyWidth = candleWidth;
-                
+
                 const color = candle.isBullish ? '#22c55e' : '#ef4444';
-                
+
                 // Draw wick (high-low line)
                 ctx.strokeStyle = color;
                 ctx.lineWidth = 1;
@@ -252,7 +287,7 @@ const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage =
                 ctx.moveTo(x, highY);
                 ctx.lineTo(x, lowY);
                 ctx.stroke();
-                
+
                 // Draw body rectangle
                 ctx.fillStyle = color;
                 ctx.strokeStyle = color;
@@ -264,37 +299,7 @@ const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage =
         }
     };
 
-    const updateCandlestickYAxis = useCallback((chart) => {
-        const xScale = chart?.scales?.x;
-        const yScale = chart?.scales?.y;
-        if (!xScale || !yScale || candleData.length === 0) return;
 
-        const minIndex = Number.isFinite(xScale.min) ? Math.max(0, Math.floor(xScale.min)) : 0;
-        const maxIndex = Number.isFinite(xScale.max)
-            ? Math.min(candleData.length - 1, Math.ceil(xScale.max))
-            : candleData.length - 1;
-
-        let min = Number.POSITIVE_INFINITY;
-        let max = Number.NEGATIVE_INFINITY;
-        for (let i = minIndex; i <= maxIndex; i += 1) {
-            const candle = candleData[i];
-            if (!candle) continue;
-            min = Math.min(min, candle.low);
-            max = Math.max(max, candle.high);
-        }
-
-        if (!Number.isFinite(min) || !Number.isFinite(max)) return;
-        const padding = (max - min) * 0.05 || 1;
-        chart.options.scales.y.min = min - padding;
-        chart.options.scales.y.max = max + padding;
-    }, [candleData]);
-
-    useEffect(() => {
-        if (!chartRef.current) return;
-        const chart = chartRef.current;
-        updateCandlestickYAxis(chart);
-        chart.update('none');
-    }, [updateCandlestickYAxis]);
 
     // Create datasets for candlestick (moving averages only, candlesticks drawn by plugin)
     const candlestickDatasets = [
@@ -337,8 +342,8 @@ const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage =
 
     return (
         <div className="candlestick-chart-wrapper">
-            <Line 
-                data={{ labels, datasets: candlestickDatasets }} 
+            <Line
+                data={{ labels, datasets: candlestickDatasets }}
                 plugins={[candlestickPlugin]}
                 options={{
                     responsive: true,
@@ -359,11 +364,11 @@ const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage =
                             padding: 12,
                             callbacks: {
                                 title: (context) => labels[context[0].dataIndex],
-                                label: function(context) {
+                                label: function (context) {
                                     const dataIndex = context.dataIndex;
                                     const candle = candleData[dataIndex];
                                     const datasetLabel = context.dataset.label || '';
-                                    
+
                                     // For hidden Price dataset, show candlestick data
                                     if (datasetLabel === 'Price') {
                                         return [
@@ -422,7 +427,7 @@ const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage =
                             suggestedMax: Math.max(...candleData.map(c => c.high)) * 1.02
                         }
                     }
-                }} 
+                }}
                 ref={chartRef}
             />
         </div>

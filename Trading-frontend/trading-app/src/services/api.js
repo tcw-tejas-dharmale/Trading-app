@@ -78,4 +78,19 @@ export const fetchRiskAssessment = async () => {
   return response.data;
 };
 
+export const fetchNiftyStocks = async () => {
+  const response = await api.get('/market/nifty-50');
+  return response.data;
+};
+
+export const fetchBankNiftyStocks = async () => {
+  const response = await api.get('/market/bank-nifty');
+  return response.data;
+};
+
+export const fetchPositions = async () => {
+  const response = await api.get('/market/positions');
+  return response.data;
+};
+
 export default api;
