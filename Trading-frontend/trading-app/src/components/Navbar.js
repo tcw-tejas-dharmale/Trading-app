@@ -9,50 +9,40 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
     const location = useLocation();
     const navigate = useNavigate();
     const [instruments, setInstruments] = useState([]);
+    const [instrumentDetails, setInstrumentDetails] = useState(null);
+    const [instrumentError, setInstrumentError] = useState('');
+    const [isFetchingInstruments, setIsFetchingInstruments] = useState(false);
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
     const userInitial = (user?.name || user?.email || '').trim().charAt(0).toUpperCase();
 
-    useEffect(() => {
-        if (location.pathname === '/dashboard') {
-            loadInstruments();
-        }
-    }, [location.pathname]);
-
     const loadInstruments = async () => {
         try {
+            setIsFetchingInstruments(true);
+            setInstrumentError('');
             const data = await fetchInstruments();
-            if (data && data.length > 0) {
+            if (Array.isArray(data) && data.length > 0) {
                 setInstruments(data);
+                const details = selectedInstrument || data[0];
+                setInstrumentDetails(details);
+                if (!selectedInstrument) {
+                    onInstrumentChange(details);
+                }
             } else {
                 throw new Error("No instruments found");
             }
         } catch (error) {
             console.error("Failed to load instruments", error);
             setInstruments([]);
+            setInstrumentDetails(null);
+            setInstrumentError('Unable to load instruments. Please try again.');
+        } finally {
+            setIsFetchingInstruments(false);
         }
     };
-
-    // Set default instrument when on dashboard and none selected
-    useEffect(() => {
-        if (location.pathname === '/dashboard' && instruments.length > 0 && !selectedInstrument) {
-            onInstrumentChange(instruments[0]);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [location.pathname, instruments]);
 
     useEffect(() => {
         setIsUserMenuOpen(false);
     }, [location.pathname]);
-
-    const handleInstrumentSelect = (event) => {
-        const value = event.target.value;
-        if (!value) return;
-        const inst = instruments.find(i => i.instrument_token === parseInt(value));
-        if (inst) onInstrumentChange(inst);
-        if (location.pathname !== '/dashboard') {
-            navigate('/dashboard');
-        }
-    };
 
     return (
         <nav className="navbar">
@@ -71,20 +61,51 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
 
                 <div className="navbar-actions">
                     {location.pathname.startsWith('/dashboard') && (
-                        <div className="instrument-dropdown">
-                            <select
-                                className="input instrument-select"
-                                onFocus={loadInstruments}
-                                value={selectedInstrument?.instrument_token || ''}
-                                onChange={handleInstrumentSelect}
+                        <div className="instrument-fetch">
+                            <button
+                                type="button"
+                                className="btn btn-primary instrument-button"
+                                onClick={loadInstruments}
+                                disabled={isFetchingInstruments}
                             >
-                                <option value="">Get Instruments</option>
-                                {instruments.map(inst => (
-                                    <option key={inst.instrument_token} value={inst.instrument_token}>
-                                        {inst.name} ({inst.tradingsymbol})
-                                    </option>
-                                ))}
-                            </select>
+                                {isFetchingInstruments ? 'Loading...' : 'Get Instrument'}
+                            </button>
+                            {instrumentError && (
+                                <div className="instrument-message instrument-error" role="alert">
+                                    {instrumentError}
+                                </div>
+                            )}
+                            {!instrumentError && instrumentDetails && (
+                                <div className="instrument-panel card">
+                                    <div className="instrument-panel-header">
+                                        <div>
+                                            <div className="instrument-title">
+                                                {instrumentDetails.name || 'Instrument Details'}
+                                            </div>
+                                            <div className="instrument-subtitle">
+                                                Token {instrumentDetails.instrument_token ?? 'N/A'}
+                                            </div>
+                                        </div>
+                                        <div className="instrument-count">
+                                            Showing 1 of {instruments.length}
+                                        </div>
+                                    </div>
+                                    <div className="instrument-grid">
+                                        <div>
+                                            <span>Trading Symbol</span>
+                                            <strong>{instrumentDetails.tradingsymbol || 'N/A'}</strong>
+                                        </div>
+                                        <div>
+                                            <span>Exchange</span>
+                                            <strong>{instrumentDetails.exchange || 'N/A'}</strong>
+                                        </div>
+                                        <div>
+                                            <span>Segment</span>
+                                            <strong>{instrumentDetails.segment || 'N/A'}</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
                     <div className="user-menu-wrapper">

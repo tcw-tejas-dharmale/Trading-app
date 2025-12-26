@@ -19,7 +19,7 @@ const HomePage = () => {
       navigate('/dashboard');
       return;
     }
-    navigate('/signup');
+    navigate('/login');
   };
   return (
     <div className="homepage">
@@ -49,7 +49,7 @@ const HomePage = () => {
             <div className="hero-features">
               <div className="hero-feature-item">
                 <CheckCircle size={20} className="feature-icon" />
-                <span>Sign up required</span>
+                <span>Login required</span>
               </div>
               <div className="hero-feature-item">
                 <CheckCircle size={20} className="feature-icon" />

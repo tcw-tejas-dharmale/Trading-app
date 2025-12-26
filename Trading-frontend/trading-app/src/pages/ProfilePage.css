@@ -235,16 +235,6 @@
   border-color: var(--accent);
 }
 
-.security-panel {
-  margin-top: 1.5rem;
-  padding: 1.5rem;
-  border-radius: 0.75rem;
-  background-color: rgba(15, 23, 42, 0.6);
-  border: 1px solid var(--border);
-  display: grid;
-  gap: 1rem;
-}
-
 .security-title {
   font-size: 1rem;
   font-weight: 600;
@@ -259,6 +249,59 @@
 .security-actions {
   margin-top: 0;
   padding-top: 0.5rem;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 999;
+}
+
+.modal-card {
+  width: min(520px, 100%);
+  padding: 1.75rem;
+  border-radius: 1rem;
+  background-color: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(51, 65, 85, 0.8);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.35);
+  display: grid;
+  gap: 1rem;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.modal-close {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, background-color 0.2s;
+}
+
+.modal-close:hover {
+  color: var(--text-primary);
+  background-color: rgba(148, 163, 184, 0.1);
+}
+
+.modal-close:focus-visible {
+  outline: none;
+  border-color: var(--accent);
 }
 
 .setting-item {

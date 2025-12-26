@@ -266,6 +266,131 @@ const ProfilePage = () => {
           )}
         </div>
       </div>
+
+      {showSecurity && (
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            setShowSecurity(false);
+            setPasswordError('');
+            setPasswordSuccess('');
+          }}
+        >
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <h4 className="security-title">Change Password</h4>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => {
+                  setShowSecurity(false);
+                  setPasswordError('');
+                  setPasswordSuccess('');
+                }}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            {passwordError && (
+              <div className="error-message">
+                {passwordError}
+              </div>
+            )}
+            {passwordSuccess && (
+              <div className="success-message">
+                {passwordSuccess}
+              </div>
+            )}
+            <div className="security-field">
+              <label className="detail-label">Current Password</label>
+              <div className="password-input">
+                <input
+                  type={showPasswords ? 'text' : 'password'}
+                  className="detail-input"
+                  value={passwordData.currentPassword}
+                  onChange={(e) =>
+                    setPasswordData({ ...passwordData, currentPassword: e.target.value })
+                  }
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() => setShowPasswords((prev) => !prev)}
+                  aria-label={showPasswords ? 'Hide passwords' : 'Show passwords'}
+                >
+                  {showPasswords ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+            </div>
+            <div className="security-field">
+              <label className="detail-label">New Password</label>
+              <div className="password-input">
+                <input
+                  type={showPasswords ? 'text' : 'password'}
+                  className="detail-input"
+                  value={passwordData.newPassword}
+                  onChange={(e) =>
+                    setPasswordData({ ...passwordData, newPassword: e.target.value })
+                  }
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() => setShowPasswords((prev) => !prev)}
+                  aria-label={showPasswords ? 'Hide passwords' : 'Show passwords'}
+                >
+                  {showPasswords ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+            </div>
+            <div className="security-field">
+              <label className="detail-label">Confirm New Password</label>
+              <div className="password-input">
+                <input
+                  type={showPasswords ? 'text' : 'password'}
+                  className="detail-input"
+                  value={passwordData.confirmPassword}
+                  onChange={(e) =>
+                    setPasswordData({ ...passwordData, confirmPassword: e.target.value })
+                  }
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() => setShowPasswords((prev) => !prev)}
+                  aria-label={showPasswords ? 'Hide passwords' : 'Show passwords'}
+                >
+                  {showPasswords ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+            </div>
+            <div className="profile-actions security-actions">
+              <button
+                className="btn btn-primary"
+                onClick={handlePasswordSave}
+                disabled={passwordSaving}
+              >
+                {passwordSaving ? 'Updating...' : 'Update Password'}
+              </button>
+              <button
+                className="btn btn-outline"
+                onClick={() => {
+                  setShowSecurity(false);
+                  setPasswordError('');
+                  setPasswordSuccess('');
+                }}
+                disabled={passwordSaving}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
