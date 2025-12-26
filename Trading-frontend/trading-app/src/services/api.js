@@ -32,6 +32,11 @@ export const fetchCurrentUser = async () => {
   return response.data;
 };
 
+export const updateCurrentUser = async (payload) => {
+  const response = await api.put('/users/me', payload);
+  return response.data;
+};
+
 export const fetchInstruments = async () => {
   const response = await api.get('/market/instruments');
   return response.data;

@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { login as loginApi, signup as signupApi, fetchCurrentUser } from '../services/api';
+import { login as loginApi, signup as signupApi, fetchCurrentUser, updateCurrentUser } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -48,16 +48,25 @@ export const AuthProvider = ({ children }) => {
     const signup = async (email, password, name) => {
         try {
             const data = await signupApi(email, password, name);
-            // Assuming signup auto-logs in, or requires login after. 
-            // If it returns a token, we set it.
             if (data.access_token) {
                 localStorage.setItem('token', data.access_token);
                 setUser({ token: data.access_token });
+                return true;
+            }
+
+            const loginData = await loginApi(email, password);
+            localStorage.setItem('token', loginData.access_token);
+            setUser({ token: loginData.access_token, email });
+            try {
+                const profile = await fetchCurrentUser();
+                setUser({ token: loginData.access_token, ...profile });
+            } catch (error) {
+                // Keep basic session so routing can decide what to do next.
             }
             return true;
         } catch (error) {
             console.error("Signup failed", error);
-            throw error; // Propagate to component
+            throw error;
         }
     };
 
@@ -66,8 +75,15 @@ export const AuthProvider = ({ children }) => {
         setUser(null);
     };
 
+    const updateProfile = async (payload) => {
+        const updatedUser = await updateCurrentUser(payload);
+        const token = localStorage.getItem('token');
+        setUser({ token, ...updatedUser });
+        return updatedUser;
+    };
+
     return (
-        <AuthContext.Provider value={{ user, login, signup, logout, loading }}>
+        <AuthContext.Provider value={{ user, login, signup, logout, updateProfile, loading }}>
             {children}
         </AuthContext.Provider>
     );

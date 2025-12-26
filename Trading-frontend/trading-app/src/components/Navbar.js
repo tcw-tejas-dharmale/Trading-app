@@ -27,14 +27,8 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
                 throw new Error("No instruments found");
             }
         } catch (error) {
-            console.error("Failed to load instruments, using mock data", error);
-            const MOCK_INSTRUMENTS = [
-                { instrument_token: 256265, name: 'NIFTY 50', tradingsymbol: 'NIFTY 50', exchange: 'NSE' },
-                { instrument_token: 260105, name: 'BANKNIFTY', tradingsymbol: 'BANKNIFTY', exchange: 'NSE' },
-                { instrument_token: 408065, name: 'INFY', tradingsymbol: 'INFY', exchange: 'NSE' },
-                { instrument_token: 738561, name: 'RELIANCE', tradingsymbol: 'RELIANCE', exchange: 'NSE' }
-            ];
-            setInstruments(MOCK_INSTRUMENTS);
+            console.error("Failed to load instruments", error);
+            setInstruments([]);
         }
     };
 
@@ -106,15 +100,6 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
                                 onClick={() => setIsUserMenuOpen((open) => !open)}
                             >
                                 {userInitial || '?'}
-                            </button>
-                        )}
-                        {user && (
-                            <button
-                                type="button"
-                                className="btn btn-outline navbar-logout"
-                                onClick={logout}
-                            >
-                                Log out
                             </button>
                         )}
                         {user && isUserMenuOpen && (

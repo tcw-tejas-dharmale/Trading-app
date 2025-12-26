@@ -1,9 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Security, Header
-from typing import List, Optional, Any
+from fastapi import APIRouter, Depends, HTTPException, Security
+from typing import Optional, Any
 from app.core import database
 from app.controllers.market_data_controller import market_controller
-from app.controllers.financial_data_controller import financial_data_controller
-from app.core import security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from app.core.config import settings
@@ -30,11 +28,14 @@ def get_current_user_optional(credentials: Optional[HTTPAuthorizationCredentials
         return None
 
 @router.get("/instruments")
-async def get_instruments(current_user: Optional[str] = Security(get_current_user_optional)):
+async def get_instruments(
+    db: Any = Depends(database.get_db),
+    current_user: Optional[str] = Security(get_current_user_optional)
+):
     """
     Get list of available instruments. Authentication is optional.
     """
-    return await market_controller.get_instruments()
+    return await market_controller.get_instruments(db)
 
 @router.get("/scales")
 def get_scales(current_user: Optional[str] = Security(get_current_user_optional)):
@@ -56,55 +57,21 @@ def get_strategies(current_user: Optional[str] = Security(get_current_user_optio
 
 @router.get("/historical-data")
 async def get_historical_data(
-    instrument_token: int, 
-    scale: str, 
-    from_date: Optional[str] = None, 
-    to_date: Optional[str] = None,
+    instrument_token: int,
+    scale: str = "5m",
+    start: Optional[str] = None,
+    end: Optional[str] = None,
     current_user: Optional[str] = Security(get_current_user_optional)
 ):
     """
-    Get historical data for visualization. Authentication is optional.
+    Get historical candle data for an instrument.
     """
-    return await market_controller.get_historical_data(instrument_token, scale, from_date, to_date)
-
-@router.get("/financial-history")
-async def get_financial_history(
-    years: int = 5,
-    current_user: Optional[str] = Security(get_current_user_optional)
-):
-    """
-    Get historical financial data (revenue, profit margins, growth rates). Authentication is optional.
-    """
-    return financial_data_controller.generate_historical_financial_data(years)
-
-@router.get("/competitors")
-async def get_competitors(
-    current_user: Optional[str] = Security(get_current_user_optional)
-):
-    """
-    Get competitor comparison data. Authentication is optional.
-    """
-    return financial_data_controller.get_competitor_data()
-
-@router.get("/roi-projection")
-async def get_roi_projection(
-    initial_investment: float = 10000,
-    years: int = 5,
-    current_user: Optional[str] = Security(get_current_user_optional)
-):
-    """
-    Get ROI projections. Authentication is optional.
-    """
-    return financial_data_controller.calculate_roi_projection(initial_investment, years)
-
-@router.get("/risk-assessment")
-async def get_risk_assessment(
-    current_user: Optional[str] = Security(get_current_user_optional)
-):
-    """
-    Get risk assessment. Authentication is optional.
-    """
-    return financial_data_controller.assess_risk()
+    return await market_controller.get_historical_data(
+        instrument_token=instrument_token,
+        interval=scale,
+        from_date=start,
+        to_date=end
+    )
 
 @router.get("/nifty-50")
 async def get_nifty_50(
@@ -134,8 +101,9 @@ async def get_positions(
     """
     Get Open Positions.
     """
-    # For dev, if no user, pass a dummy user_id or handle in controller
-    user_id = current_user if current_user else 1
+    user_id = current_user
+    if not user_id:
+        return []
     return await market_controller.get_positions(db, user_id)
 
 @router.post("/sync-instruments")

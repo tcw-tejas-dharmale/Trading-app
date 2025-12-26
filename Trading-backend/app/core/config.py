@@ -28,16 +28,9 @@ class Settings(BaseSettings):
     @computed_field
     @property
     def DATABASE_URL(self) -> str:
-        return str(
-            URL.create(
-                drivername="postgresql+psycopg2",
-                username=self.POSTGRES_USER,
-                password=self.POSTGRES_PASSWORD,
-                host=self.POSTGRES_SERVER,
-                port=self.POSTGRES_PORT,
-                database=self.POSTGRES_DB,
-            )
-        )
+        db_url = f"postgresql+psycopg2://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        print(db_url)
+        return db_url
 
     class Config:
         env_file = ".env"

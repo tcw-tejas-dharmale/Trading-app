@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Dashboard from './components/Dashboard';
 import HomePage from './components/HomePage';
@@ -7,8 +7,22 @@ import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import ProfilePage from './pages/ProfilePage';
 import HelpPage from './pages/HelpPage';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import './App.css';
+
+const ProtectedRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return null;
+  }
+
+  if (!user) {
+    return <Navigate to="/signup" replace />;
+  }
+
+  return children;
+};
 
 function App() {
   const [selectedInstrument, setSelectedInstrument] = useState(null);
@@ -26,7 +40,11 @@ function App() {
               <Route path="/" element={<HomePage />} />
               <Route
                 path="/dashboard/*"
-                element={<Dashboard selectedInstrument={selectedInstrument} />}
+                element={
+                  <ProtectedRoute>
+                    <Dashboard selectedInstrument={selectedInstrument} />
+                  </ProtectedRoute>
+                }
               />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />

@@ -1,16 +1,25 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, CheckCircle } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 import './HomePage.css';
 
 const HomePage = () => {
   const navigate = useNavigate();
+  const { user, loading } = useAuth();
 
 
   const handleGetStarted = (event) => {
     event.preventDefault();
-    navigate('/dashboard');
+    if (loading) {
+      return;
+    }
+    if (user) {
+      navigate('/dashboard');
+      return;
+    }
+    navigate('/signup');
   };
   return (
     <div className="homepage">
@@ -27,7 +36,12 @@ const HomePage = () => {
               at your fingertips. Start trading smarter today.
             </p>
             <div className="hero-cta">
-              <button type="button" className="btn btn-primary btn-large" onClick={handleGetStarted}>
+              <button
+                type="button"
+                className="btn btn-primary btn-large"
+                onClick={handleGetStarted}
+                disabled={loading}
+              >
                 Get Started
                 <ArrowRight size={20} />
               </button>
@@ -35,7 +49,7 @@ const HomePage = () => {
             <div className="hero-features">
               <div className="hero-feature-item">
                 <CheckCircle size={20} className="feature-icon" />
-                <span>No signup required</span>
+                <span>Sign up required</span>
               </div>
               <div className="hero-feature-item">
                 <CheckCircle size={20} className="feature-icon" />

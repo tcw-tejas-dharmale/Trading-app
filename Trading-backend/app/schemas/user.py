@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, constr
 from typing import Optional
 
 class UserBase(BaseModel):
@@ -6,14 +6,19 @@ class UserBase(BaseModel):
     email: EmailStr
 
 class UserCreate(UserBase):
-    password: str
+    password: constr(min_length=8, max_length=72)
 
 class User(UserBase):
     id: int
-    is_active: bool
 
     class Config:
         from_attributes = True
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    current_password: Optional[constr(min_length=8, max_length=72)] = None
+    new_password: Optional[constr(min_length=8, max_length=72)] = None
 
 class Token(BaseModel):
     access_token: str

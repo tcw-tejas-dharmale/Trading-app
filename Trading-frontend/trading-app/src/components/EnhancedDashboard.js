@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { fetchScales, fetchStrategies, fetchNiftyStocks, fetchBankNiftyStocks, fetchPositions } from '../services/api';
+import { fetchScales, fetchStrategies, fetchNiftyStocks, fetchBankNiftyStocks, fetchPositions, fetchHistoricalData } from '../services/api';
 import CandlestickChart from './CandlestickChart';
 import { Clock, Sliders, Search, Briefcase, X } from 'lucide-react';
 import './EnhancedDashboard.css';
 
-// --- Mock Data Constants ---
-
-// Data is now fetched from the backend API
-
 // --- Mini Chart Component ---
 const MiniCandleChart = ({ candles }) => {
+    const safeCandles = Array.isArray(candles) ? candles : [];
+    if (safeCandles.length === 0) {
+        return <div className="mini-chart text-secondary">No data</div>;
+    }
     // Simple SVG rendering of 5 candles
     const width = 100;
     const height = 40;
@@ -19,7 +19,7 @@ const MiniCandleChart = ({ candles }) => {
 
     // Find min/max for scaling
     let min = Infinity, max = -Infinity;
-    candles.forEach(c => {
+    safeCandles.forEach(c => {
         if (c.low < min) min = c.low;
         if (c.high > max) max = c.high;
     });
@@ -29,7 +29,7 @@ const MiniCandleChart = ({ candles }) => {
 
     return (
         <svg width={width} height={height} className="mini-chart">
-            {candles.map((c, i) => {
+            {safeCandles.map((c, i) => {
                 const x = i * (candleWidth + gap) + 4;
                 const yOpen = getY(c.open);
                 const yClose = getY(c.close);
@@ -171,49 +171,34 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
         navigate(route);
     };
 
-    // Generate detailed mock data for the modal chart
-    const generateDetailedChartData = (basePrice, scale = '5m') => {
-        const now = new Date();
-
-        let intervalMs = 5 * 60 * 1000; // default 5m
-        if (scale === '1m') intervalMs = 60 * 1000;
-        if (scale === '15m') intervalMs = 15 * 60 * 1000;
-        if (scale === '30m') intervalMs = 30 * 60 * 1000;
-        if (scale === '1h') intervalMs = 60 * 60 * 1000;
-        if (scale === '1d') intervalMs = 24 * 60 * 60 * 1000;
-        if (scale === '2d') intervalMs = 2 * 24 * 60 * 60 * 1000;
-        if (scale === '1M') intervalMs = 24 * 60 * 60 * 1000; // User requested daily candles for 1M view
-
-        // Generate 50 candles
-        return Array.from({ length: 50 }, (_, i) => {
-            const time = new Date(now.getTime() - (50 - i) * intervalMs);
-            const volatility = basePrice * 0.005; // 0.5% volatility
-            const open = basePrice + (Math.random() - 0.5) * volatility * 5;
-            const close = open + (Math.random() - 0.5) * volatility;
-            const high = Math.max(open, close) + Math.random() * volatility;
-            const low = Math.min(open, close) - Math.random() * volatility;
-            return {
-                date: time.toISOString(),
-                open,
-                high,
-                low,
-                close,
-                volume: Math.floor(Math.random() * 500000)
-            };
-        });
+    const loadChartData = async (stock, scale) => {
+        if (!stock) {
+            setModalChartData([]);
+            return;
+        }
+        const token = stock.instrument_token ?? stock.id;
+        if (!token) {
+            setModalChartData([]);
+            return;
+        }
+        try {
+            const data = await fetchHistoricalData(token, scale);
+            setModalChartData(Array.isArray(data) ? data : []);
+        } catch (error) {
+            console.error("Failed to load historical data", error);
+            setModalChartData([]);
+        }
     };
 
-    const handleStockClick = (stock) => {
-        const detailedData = generateDetailedChartData(stock.price, selectedScale);
-        setModalChartData(detailedData);
+    const handleStockClick = async (stock) => {
         setSelectedStockForChart(stock);
+        await loadChartData(stock, selectedScale);
     };
 
     // Update modal data when scale changes
     useEffect(() => {
         if (selectedStockForChart) {
-            const detailedData = generateDetailedChartData(selectedStockForChart.price, selectedScale);
-            setModalChartData(detailedData);
+            loadChartData(selectedStockForChart, selectedScale);
         }
     }, [selectedScale, selectedStockForChart]);
 
@@ -230,7 +215,7 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                         <tr>
                             <th style={{ width: '50px' }}>ID</th>
                             <th>Company Name</th>
-                            <th>Last 5 Candles</th>
+                            <th>Candle Chart</th>
                             <th>Position</th>
                             <th className="text-right">Action</th>
                         </tr>

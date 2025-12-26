@@ -15,7 +15,7 @@ const HelpPage = () => {
     {
       id: 2,
       question: 'What data sources does WyseTrade use?',
-      answer: 'WyseTrade currently uses simulated market data for demonstration purposes. In production, it would connect to real-time market data providers like Zerodha Kite API or other financial data services.'
+      answer: 'WyseTrade displays market data provided by the backend services you configure. Connect a real data provider to enable live feeds.'
     },
     {
       id: 3,

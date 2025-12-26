@@ -95,12 +95,6 @@
   gap: 0.5rem;
 }
 
-.navbar-logout {
-  padding: 0.45rem 0.9rem;
-  font-size: 0.85rem;
-  border-radius: 0.6rem;
-}
-
 .user-menu {
   position: absolute;
   top: 46px;
