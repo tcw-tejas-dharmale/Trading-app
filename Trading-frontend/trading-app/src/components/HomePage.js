@@ -20,7 +20,6 @@ const HomePage = () => {
           <div className="hero-content">
             <h1 className="hero-title">
               <span className="title-green">Master the Markets with</span>
-              <br />
               <span className="title-blue">Precision Trading</span>
             </h1>
             <p className="hero-subtitle">
