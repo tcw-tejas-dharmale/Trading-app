@@ -34,7 +34,7 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [location.pathname, instruments]);
-    
+
     useEffect(() => {
         setIsUserMenuOpen(false);
     }, [location.pathname]);
@@ -56,7 +56,7 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
                     <Link to="/" className="brand-logo">
                         <span className="brand-mark" aria-hidden="true">
                             <img
-                                src={`${process.env.PUBLIC_URL}/WyseTrade Logo with Minimalist Owl Design.png`}
+                                src={`${process.env.PUBLIC_URL}/images/logo.png`}
                                 alt="WyseTrade logo"
                             />
                         </span>
@@ -84,7 +84,7 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
                     )}
                     <div className="user-menu-wrapper">
                         {!user ? (
-                            <Link to="/login" className="btn btn-outline navbar-login">
+                            <Link to="/dashboard" className="btn btn-outline navbar-login">
                                 Login
                             </Link>
                         ) : (

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { fetchScales, fetchStrategies, fetchHistoricalData, fetchFinancialHistory, fetchCompetitors, fetchROIProjection, fetchRiskAssessment } from '../services/api';
 import CandlestickChart from './CandlestickChart';
 import ZoomableLineChart from './ZoomableLineChart';
@@ -6,7 +7,7 @@ import { Clock, Sliders, TrendingUp, TrendingDown, Info, Shield, Target, AlertCi
 import './EnhancedDashboard.css';
 
 const EnhancedDashboard = ({ selectedInstrument }) => {
-    const preferredScales = ['1m', '4m', '5m', '15m', '30m', '1h', '1d', '2d', '1M'];
+    const preferredScales = ['1m', '5m', '15m', '30m', '1h', '1d', '2d', '1M'];
     const [scales, setScales] = useState(preferredScales);
     const [strategies, setStrategies] = useState([]);
     const [selectedScale, setSelectedScale] = useState('5m');
@@ -104,26 +105,51 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
         return scale.endsWith('d') ? scale.toUpperCase() : scale;
     };
 
+    // Add navigate hook
+    const navigate = useNavigate();
+    const location = useLocation();
+
+    // Sync selected tab with URL route changes
+    useEffect(() => {
+        const path = location.pathname;
+        if (path.includes('nifty50')) {
+            setSelectedInstrumentTab('nifty');
+        } else if (path.includes('banknifty')) {
+            setSelectedInstrumentTab('banknifty');
+        } else if (path.includes('open-position')) {
+            setSelectedInstrumentTab('openposition');
+        }
+    }, [location.pathname]);
+
     return (
         <div className="enhanced-dashboard container">
             {/* Instrument Tabs */}
             <div className="instrument-tabs-section">
                 <div className="instrument-tabs">
                     <button
-                        className={`instrument-tab ${selectedInstrumentTab === 'nifty' ? 'active' : ''}`}
-                        onClick={() => setSelectedInstrumentTab('nifty')}
+                        className={`instrument-tab ${selectedInstrumentTab === 'nifty' || window.location.pathname.includes('/nifty') ? 'active' : ''}`}
+                        onClick={() => {
+                            setSelectedInstrumentTab('nifty');
+                            navigate('/dashboard/nifty50');
+                        }}
                     >
                         📊 Nifty 50
                     </button>
                     <button
-                        className={`instrument-tab ${selectedInstrumentTab === 'banknifty' ? 'active' : ''}`}
-                        onClick={() => setSelectedInstrumentTab('banknifty')}
+                        className={`instrument-tab ${selectedInstrumentTab === 'banknifty' || window.location.pathname.includes('/banknifty') ? 'active' : ''}`}
+                        onClick={() => {
+                            setSelectedInstrumentTab('banknifty');
+                            navigate('/dashboard/banknifty');
+                        }}
                     >
                         🏦 Bank Nifty
                     </button>
                     <button
-                        className={`instrument-tab ${selectedInstrumentTab === 'openposition' ? 'active' : ''}`}
-                        onClick={() => setSelectedInstrumentTab('openposition')}
+                        className={`instrument-tab ${selectedInstrumentTab === 'openposition' || window.location.pathname.includes('/open-position') ? 'active' : ''}`}
+                        onClick={() => {
+                            setSelectedInstrumentTab('openposition');
+                            navigate('/dashboard/open-position');
+                        }}
                     >
                         📈 Open Position
                     </button>
@@ -166,7 +192,6 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                             ))}
                         </select>
                     </div>
-
                     <div className="control-group">
                         <label className="text-secondary text-sm flex items-center gap-2 mb-2">
                             <Search size={16} /> Scan Stocks
@@ -183,68 +208,71 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                 </div>
             </div>
 
+
             {/* Main Chart Section - Increased Width */}
-            {selectedInstrument && (
-                <div className="main-chart-section">
-                    <div className="chart-container-enhanced card">
-                        <div className="chart-header">
-                            <h2 className="chart-title">{selectedInstrument?.name} - Performance Analysis</h2>
-                            <div className="chart-actions">
-                                <button
-                                    className={`btn btn-sm ${chartType === 'candlestick' ? 'btn-primary' : 'btn-outline'}`}
-                                    onClick={() => setChartType('candlestick')}
-                                >
-                                    Candlestick
-                                </button>
-                                <button
-                                    className={`btn btn-sm ${chartType === 'line' ? 'btn-primary' : 'btn-outline'}`}
-                                    onClick={() => setChartType('line')}
-                                >
-                                    Line
-                                </button>
-                                <button
-                                    className={`btn btn-sm ${chartType === 'bar' ? 'btn-primary' : 'btn-outline'}`}
-                                    onClick={() => setChartType('bar')}
-                                >
-                                    Volume
-                                </button>
+            {
+                selectedInstrument && (
+                    <div className="main-chart-section">
+                        <div className="chart-container-enhanced card">
+                            <div className="chart-header">
+                                <h2 className="chart-title">{selectedInstrument?.name} - Performance Analysis</h2>
+                                <div className="chart-actions">
+                                    <button
+                                        className={`btn btn-sm ${chartType === 'candlestick' ? 'btn-primary' : 'btn-outline'}`}
+                                        onClick={() => setChartType('candlestick')}
+                                    >
+                                        Candlestick
+                                    </button>
+                                    <button
+                                        className={`btn btn-sm ${chartType === 'line' ? 'btn-primary' : 'btn-outline'}`}
+                                        onClick={() => setChartType('line')}
+                                    >
+                                        Line
+                                    </button>
+                                    <button
+                                        className={`btn btn-sm ${chartType === 'bar' ? 'btn-primary' : 'btn-outline'}`}
+                                        onClick={() => setChartType('bar')}
+                                    >
+                                        Volume
+                                    </button>
+                                </div>
                             </div>
+                            {loading ? (
+                                <div className="loading-state">Loading data...</div>
+                            ) : marketData.length > 0 ? (
+                                <div className="chart-wrapper-enhanced">
+                                    {chartType === 'bar' ? (
+                                        <CandlestickChart
+                                            data={marketData}
+                                            label={`${selectedInstrument?.name}`}
+                                            showVolume={true}
+                                            showMovingAverage={false}
+                                            chartMode="volume"
+                                        />
+                                    ) : chartType === 'line' ? (
+                                        <ZoomableLineChart
+                                            data={marketData}
+                                            label={`${selectedInstrument?.name} - Close Price`}
+                                            showMA20={false}
+                                            showMA50={false}
+                                        />
+                                    ) : (
+                                        <CandlestickChart
+                                            data={marketData}
+                                            label={`${selectedInstrument?.name}`}
+                                            showVolume={false}
+                                            showMovingAverage={false}
+                                            chartMode="candlestick"
+                                        />
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="loading-state">No data available</div>
+                            )}
                         </div>
-                        {loading ? (
-                            <div className="loading-state">Loading data...</div>
-                        ) : marketData.length > 0 ? (
-                            <div className="chart-wrapper-enhanced">
-                                {chartType === 'bar' ? (
-                                    <CandlestickChart
-                                        data={marketData}
-                                        label={`${selectedInstrument?.name}`}
-                                        showVolume={true}
-                                        showMovingAverage={false}
-                                        chartMode="volume"
-                                    />
-                                ) : chartType === 'line' ? (
-                                    <ZoomableLineChart
-                                        data={marketData}
-                                        label={`${selectedInstrument?.name} - Close Price`}
-                                        showMA20={false}
-                                        showMA50={false}
-                                    />
-                                ) : (
-                                    <CandlestickChart
-                                        data={marketData}
-                                        label={`${selectedInstrument?.name}`}
-                                        showVolume={false}
-                                        showMovingAverage={false}
-                                        chartMode="candlestick"
-                                    />
-                                )}
-                            </div>
-                        ) : (
-                            <div className="loading-state">No data available</div>
-                        )}
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Financial Data Tables Section */}
             <div className="data-tables-section">
@@ -428,7 +456,7 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                 )}
             </div>
 
-        </div>
+        </div >
     );
 };
 

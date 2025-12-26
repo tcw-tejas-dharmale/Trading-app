@@ -24,9 +24,9 @@ function App() {
           <main>
             <Routes>
               <Route path="/" element={<HomePage />} />
-              <Route 
-                path="/dashboard" 
-                element={<Dashboard selectedInstrument={selectedInstrument} />} 
+              <Route
+                path="/dashboard/*"
+                element={<Dashboard selectedInstrument={selectedInstrument} />}
               />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />

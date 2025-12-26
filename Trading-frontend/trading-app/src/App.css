@@ -6,7 +6,6 @@
 
 main {
   flex: 1;
-  padding: 2rem 0;
   display: flex;
   flex-direction: column;
 }
@@ -75,9 +74,12 @@ main {
 }
 
 @keyframes pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 0.5;
   }
+
   50% {
     opacity: 1;
   }

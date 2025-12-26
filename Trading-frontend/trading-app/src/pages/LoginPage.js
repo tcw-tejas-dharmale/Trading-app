@@ -53,7 +53,7 @@ const LoginPage = () => {
           <div className="login-brand">
             <span className="brand-mark" aria-hidden="true">
               <img
-                src={`${process.env.PUBLIC_URL}/WyseTrade Logo with Minimalist Owl Design.png`}
+                src={`${process.env.PUBLIC_URL}/images/logo.png`}
                 alt="WyseTrade logo"
               />
             </span>
@@ -139,7 +139,7 @@ const LoginPage = () => {
                   </Link>
                 </p>
                 <p className="login-footer-text">
-                  
+
                 </p>
               </div>
             )}

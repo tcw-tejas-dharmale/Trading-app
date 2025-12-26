@@ -1,38 +1,17 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, CheckCircle } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
-import { fetchCurrentUser } from '../services/api';
+
 import './HomePage.css';
 
 const HomePage = () => {
   const navigate = useNavigate();
-  const { user, loading } = useAuth();
 
-  const handleGetStarted = async (event) => {
+
+  const handleGetStarted = (event) => {
     event.preventDefault();
-    if (loading) {
-      return;
-    }
-    if (!user?.token) {
-      navigate('/login');
-      return;
-    }
-    try {
-      await fetchCurrentUser();
-      navigate('/dashboard');
-    } catch (error) {
-      const status = error?.response?.status;
-      if (status === 404) {
-        navigate('/signup');
-      } else if (status === 401) {
-        navigate('/login');
-      } else {
-        navigate('/signup');
-      }
-    }
+    navigate('/dashboard');
   };
-
   return (
     <div className="homepage">
       {/* Hero Section */}
@@ -40,8 +19,9 @@ const HomePage = () => {
         <div className="container">
           <div className="hero-content">
             <h1 className="hero-title">
-              Master the Markets with
-              <span className="gradient-text"> Precision Trading</span>
+              <span className="title-green">Master the Markets with</span>
+              <br />
+              <span className="title-blue">Precision Trading</span>
             </h1>
             <p className="hero-subtitle">
               Advanced charting, real-time market data, and powerful trading strategies
@@ -70,7 +50,6 @@ const HomePage = () => {
           </div>
         </div>
       </section>
-
     </div>
   );
 };
