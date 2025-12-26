@@ -48,29 +48,6 @@ const Footer = () => {
               <li><Link to="/">Home</Link></li>
               <li><Link to="/dashboard">Dashboard</Link></li>
               <li><Link to="/profile">Profile</Link></li>
-              <li><Link to="/help">Help & Support</Link></li>
-            </ul>
-          </div>
-
-          {/* Company */}
-          <div className="footer-section">
-            <h3 className="footer-heading">Company</h3>
-            <ul className="footer-links">
-              <li><Link to="/about">About Us</Link></li>
-              <li><Link to="/contact">Contact Us</Link></li>
-              <li><a href="#careers">Careers</a></li>
-              <li><a href="#blog">Blog</a></li>
-            </ul>
-          </div>
-
-          {/* Legal */}
-          <div className="footer-section">
-            <h3 className="footer-heading">Legal</h3>
-            <ul className="footer-links">
-              <li><Link to="/privacy">Privacy Policy</Link></li>
-              <li><Link to="/terms">Terms of Service</Link></li>
-              <li><a href="#cookies">Cookie Policy</a></li>
-              <li><a href="#disclaimer">Disclaimer</a></li>
             </ul>
           </div>
 

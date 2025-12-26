@@ -58,6 +58,7 @@ const MiniCandleChart = ({ candles }) => {
 };
 
 const EnhancedDashboard = ({ selectedInstrument }) => {
+    const excludedScales = new Set(['4h']);
     const preferredScales = ['1m', '5m', '15m', '30m', '1h', '1d', '2d', '1M'];
     const [scales, setScales] = useState(preferredScales);
     const [strategies, setStrategies] = useState([]);
@@ -107,13 +108,14 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                     fetchStrategies()
                 ]);
 
-                const mergedScales = [...preferredScales];
+                const mergedScales = [...preferredScales].filter(scale => !excludedScales.has(scale));
                 if (Array.isArray(scalesData)) {
                     scalesData.forEach((scale) => {
+                        if (excludedScales.has(scale)) return;
                         if (!mergedScales.includes(scale)) mergedScales.push(scale);
                     });
                 }
-                setScales(mergedScales);
+                setScales(mergedScales.filter(scale => !excludedScales.has(scale)));
                 setStrategies(strategiesData || []); // Use fetched strategies or empty array
 
                 // Set initial state from URL or defaults

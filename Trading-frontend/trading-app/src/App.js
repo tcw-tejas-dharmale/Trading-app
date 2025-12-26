@@ -6,7 +6,6 @@ import HomePage from './components/HomePage';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import ProfilePage from './pages/ProfilePage';
-import HelpPage from './pages/HelpPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import './App.css';
 
@@ -49,12 +48,6 @@ function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
               <Route path="/profile" element={<ProfilePage />} />
-              <Route path="/help" element={<HelpPage />} />
-              {/* Placeholder routes for footer links */}
-              <Route path="/about" element={<HelpPage />} />
-              <Route path="/contact" element={<HelpPage />} />
-              <Route path="/privacy" element={<HelpPage />} />
-              <Route path="/terms" element={<HelpPage />} />
             </Routes>
           </main>
         </div>

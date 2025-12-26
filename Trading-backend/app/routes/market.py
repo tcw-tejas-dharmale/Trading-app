@@ -42,7 +42,7 @@ def get_scales(current_user: Optional[str] = Security(get_current_user_optional)
     """
     Get available time scales. Authentication is optional.
     """
-    return ["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
+    return ["1m", "5m", "15m", "30m", "1h", "1d"]
 
 @router.get("/strategies")
 def get_strategies(current_user: Optional[str] = Security(get_current_user_optional)):
