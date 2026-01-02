@@ -328,6 +328,13 @@
     transition: background-color 0.2s;
 }
 
+.table-empty {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    padding: 2rem 1rem;
+}
+
 .enhanced-table tbody tr:hover,
 .enhanced-table tbody tr.hovered {
     background-color: rgba(56, 189, 248, 0.1);

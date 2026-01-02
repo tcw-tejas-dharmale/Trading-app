@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { fetchScales, fetchStrategies, fetchNiftyStocks, fetchBankNiftyStocks, fetchPositions, fetchHistoricalData } from '../services/api';
+import { fetchScales, fetchStrategies, fetchNiftyStocks, fetchBankNiftyStocks, fetchPositions, fetchHistoricalData, fetchZerodhaLoginUrl, syncInstruments } from '../services/api';
 import CandlestickChart from './CandlestickChart';
 import { Clock, Sliders, Search, Briefcase, X } from 'lucide-react';
 import './EnhancedDashboard.css';
@@ -62,6 +62,8 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
     const preferredScales = ['1m', '5m', '15m', '30m', '1h', '1d', '2d', '1M'];
     const [scales, setScales] = useState(preferredScales);
     const [strategies, setStrategies] = useState([]);
+    const [scalesLoaded, setScalesLoaded] = useState(false);
+    const [strategiesLoaded, setStrategiesLoaded] = useState(false);
     const [selectedScale, setSelectedScale] = useState('5m');
     const [selectedStrategy, setSelectedStrategy] = useState(null);
     const [activeTab, setActiveTab] = useState('nifty'); // 'nifty', 'banknifty', 'openposition'
@@ -75,6 +77,11 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
     const [niftyError, setNiftyError] = useState('');
     const [bankError, setBankError] = useState('');
     const [openPositions, setOpenPositions] = useState([]);
+    const [niftyBlocked, setNiftyBlocked] = useState(false);
+    const [bankBlocked, setBankBlocked] = useState(false);
+    const [positionsBlocked, setPositionsBlocked] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [isConnecting, setIsConnecting] = useState(false);
 
     // Modal State
     const [selectedStockForChart, setSelectedStockForChart] = useState(null);
@@ -87,16 +94,23 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
 
     // Function to refresh market data and positions
     const refreshPositions = async () => {
+        if (positionsBlocked) return;
         try {
             const positions = await fetchPositions();
             setOpenPositions(positions);
+            setPositionsBlocked(false);
         } catch (error) {
             console.error("Failed to load market data", error);
             setOpenPositions([]);
+            if (error?.response?.status === 403) {
+                setPositionsBlocked(true);
+            }
         }
     };
 
     const fetchTableData = useCallback(async (segment) => {
+        if (segment === 'nifty' && niftyBlocked) return;
+        if (segment === 'banknifty' && bankBlocked) return;
         const query = segment === 'nifty' ? niftyQuery : bankQuery;
         const params = {
             scale: selectedScale,
@@ -113,50 +127,85 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                 setNiftyStocks(response.items || []);
                 setNiftyTotal(response.total || 0);
                 setNiftyError('');
+                setNiftyBlocked(false);
             } else {
                 const response = await fetchBankNiftyStocks(params);
                 setBankNiftyStocks(response.items || []);
                 setBankTotal(response.total || 0);
                 setBankError('');
+                setBankBlocked(false);
             }
         } catch (error) {
             console.error("Failed to load market data", error);
+            const isForbidden = error?.response?.status === 403;
             if (segment === 'nifty') {
                 setNiftyStocks([]);
                 setNiftyTotal(0);
                 setNiftyError('Unable to load Nifty 50 data. Please connect Zerodha and try again.');
+                if (isForbidden) {
+                    setNiftyBlocked(true);
+                }
             } else {
                 setBankNiftyStocks([]);
                 setBankTotal(0);
                 setBankError('Unable to load Bank Nifty data. Please connect Zerodha and try again.');
+                if (isForbidden) {
+                    setBankBlocked(true);
+                }
             }
         }
-    }, [bankQuery, niftyQuery, selectedScale]);
+    }, [bankBlocked, bankQuery, niftyBlocked, niftyQuery, selectedScale]);
+
+    const mergeScales = useCallback((scaleList) => {
+        if (!Array.isArray(scaleList)) return;
+        setScales((prev) => {
+            const merged = [...prev];
+            scaleList.forEach((scale) => {
+                if (excludedScales.has(scale)) return;
+                if (!merged.includes(scale)) merged.push(scale);
+            });
+            return merged.filter(scale => !excludedScales.has(scale));
+        });
+    }, [excludedScales]);
+
+    const ensureScalesLoaded = useCallback(async () => {
+        if (scalesLoaded) return;
+        setScalesLoaded(true);
+        try {
+            const scalesData = await fetchScales();
+            mergeScales(scalesData);
+        } catch (error) {
+            console.error("Failed to load scales", error);
+            setScalesLoaded(false);
+        }
+    }, [mergeScales, scalesLoaded]);
+
+    const ensureStrategiesLoaded = useCallback(async () => {
+        if (strategiesLoaded) return;
+        setStrategiesLoaded(true);
+        try {
+            const strategiesData = await fetchStrategies();
+            setStrategies(strategiesData || []);
+        } catch (error) {
+            console.error("Failed to load strategies", error);
+            setStrategiesLoaded(false);
+        }
+    }, [strategiesLoaded]);
 
     // 1. Initialize Options and initial data fetch
     useEffect(() => {
         const init = async () => {
             try {
-                const [scalesData, strategiesData] = await Promise.all([
-                    fetchScales().catch(() => preferredScales),
-                    fetchStrategies()
-                ]);
-
                 const mergedScales = [...preferredScales].filter(scale => !excludedScales.has(scale));
-                if (Array.isArray(scalesData)) {
-                    scalesData.forEach((scale) => {
-                        if (excludedScales.has(scale)) return;
-                        if (!mergedScales.includes(scale)) mergedScales.push(scale);
-                    });
-                }
-                setScales(mergedScales.filter(scale => !excludedScales.has(scale)));
-                setStrategies(strategiesData || []); // Use fetched strategies or empty array
 
                 // Set initial state from URL or defaults
                 const urlScale = searchParams.get('scale');
                 const urlStrategy = searchParams.get('strategy');
 
-                if (urlScale && mergedScales.includes(urlScale)) {
+                if (urlScale && !excludedScales.has(urlScale)) {
+                    if (!mergedScales.includes(urlScale)) {
+                        mergedScales.push(urlScale);
+                    }
                     setSelectedScale(urlScale);
                 } else if (mergedScales.length > 0) {
                     setSelectedScale(mergedScales[1] || mergedScales[0]);
@@ -166,15 +215,14 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                     setSelectedStrategy(urlStrategy);
                 }
 
+                setScales(mergedScales);
             } catch (error) {
                 console.error("Failed to load dashboard options", error);
                 setScales(preferredScales);
-                setStrategies([]);
             }
         };
 
         init();
-        refreshPositions();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -197,7 +245,6 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
         if (selectedScale && selectedStrategy) {
             setSearchParams({ scale: selectedScale, strategy: selectedStrategy }, { replace: true });
         }
-        refreshPositions();
     }, [selectedScale, selectedStrategy, setSearchParams]);
 
 
@@ -248,17 +295,93 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
     const priceChangePct = latestCandle ? (priceChange / latestCandle.open) * 100 : null;
 
     useEffect(() => {
-        fetchTableData(activeTab);
-    }, [activeTab, fetchTableData]);
+        if (activeTab === 'nifty' || activeTab === 'banknifty') {
+            fetchTableData(activeTab);
+        }
+    }, [activeTab, fetchTableData, bankBlocked, niftyBlocked]);
 
     useEffect(() => {
+        if (activeTab !== 'nifty' && activeTab !== 'banknifty') {
+            return undefined;
+        }
+        if (activeTab === 'nifty' && niftyBlocked) {
+            return undefined;
+        }
+        if (activeTab === 'banknifty' && bankBlocked) {
+            return undefined;
+        }
         const interval = setInterval(() => {
             fetchTableData(activeTab);
         }, 15000);
         return () => clearInterval(interval);
-    }, [activeTab, fetchTableData]);
+    }, [activeTab, bankBlocked, fetchTableData, niftyBlocked]);
 
-    const renderStockTable = (data, query, setQuery, total, errorMessage, onDismissError) => (
+    useEffect(() => {
+        if (activeTab !== 'openposition') {
+            return undefined;
+        }
+        if (positionsBlocked) {
+            return undefined;
+        }
+        refreshPositions();
+        const interval = setInterval(() => {
+            refreshPositions();
+        }, 15000);
+        return () => clearInterval(interval);
+    }, [activeTab, positionsBlocked]);
+
+    const dismissNiftyError = () => {
+        setNiftyError('');
+        setNiftyBlocked(false);
+        fetchTableData('nifty');
+    };
+
+    const dismissBankError = () => {
+        setBankError('');
+        setBankBlocked(false);
+        fetchTableData('banknifty');
+    };
+
+    const setSegmentError = (segment, message) => {
+        if (segment === 'banknifty') {
+            setBankError(message);
+        } else {
+            setNiftyError(message);
+        }
+    };
+
+    const handleSyncInstruments = async (segment) => {
+        if (isSyncing) return;
+        setIsSyncing(true);
+        try {
+            await syncInstruments();
+            await fetchTableData(segment);
+        } catch (error) {
+            console.error("Failed to sync instruments", error);
+            setSegmentError(segment, 'Unable to sync instruments. Please try again.');
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
+    const handleConnectZerodha = async (segment) => {
+        if (isConnecting) return;
+        setIsConnecting(true);
+        try {
+            const response = await fetchZerodhaLoginUrl();
+            if (!response?.login_url) {
+                throw new Error('Missing Zerodha login URL');
+            }
+            window.location.assign(response.login_url);
+        } catch (error) {
+            console.error("Failed to start Zerodha login", error);
+            setSegmentError(segment, 'Unable to start Zerodha login. Please try again.');
+        } finally {
+            setIsConnecting(false);
+        }
+    };
+
+    const renderStockTable = (segment, data, query, setQuery, total, errorMessage, onDismissError) => (
         <div className="stock-table-container card">
             <div className="table-toolbar">
                 <div className="table-search">
@@ -320,35 +443,65 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                         </tr>
                     </thead>
                     <tbody>
-                        {data.map((item) => (
-                            <tr key={item.instrument_token || item.id} className="stock-row">
-                                <td>{item.id || item.instrument_token}</td>
-                                <td className="font-bold">{item.name || item.tradingsymbol}</td>
-                                <td
-                                    className="mini-chart-cell cursor-pointer"
-                                    onClick={() => handleStockClick(item)}
-                                    title="Click to view full chart"
-                                >
-                                    <div className="mini-chart-wrapper">
-                                        <MiniCandleChart candles={item.candles || []} />
-                                    </div>
-                                </td>
-                                <td>
-                                    <span className={`badge ${item.position === 'Long' ? 'badge-success' :
-                                        item.position === 'Short' ? 'badge-danger' : 'badge-neutral'
-                                        }`}>
-                                        {item.position}
-                                    </span>
-                                </td>
-                                <td className="text-right">
-                                    <div className="flex gap-2 justify-end">
-                                        <button className="btn btn-sm btn-primary">Buy</button>
-                                        <button className="btn btn-sm btn-danger-outline">Sell</button>
-                                        <button className="btn btn-sm btn-outline">Modify</button>
+                        {data.length === 0 && (
+                            <tr>
+                                <td colSpan={5} className="table-empty">
+                                    <div className="empty-state">
+                                        <p>No stocks yet. Sync instruments or connect Zerodha to load live data.</p>
+                                        <div className="flex gap-2 justify-center">
+                                            <button
+                                                type="button"
+                                                className="btn btn-sm btn-outline"
+                                                onClick={() => handleSyncInstruments(segment)}
+                                                disabled={isSyncing}
+                                            >
+                                                {isSyncing ? 'Syncing...' : 'Sync instruments'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="btn btn-sm btn-primary"
+                                                onClick={() => handleConnectZerodha(segment)}
+                                                disabled={isConnecting}
+                                            >
+                                                {isConnecting ? 'Connecting...' : 'Connect Zerodha'}
+                                            </button>
+                                        </div>
                                     </div>
                                 </td>
                             </tr>
-                        ))}
+                        )}
+                        {data.map((item) => {
+                            const position = item.position || 'Neutral';
+                            return (
+                                <tr key={item.instrument_token || item.id} className="stock-row">
+                                    <td>{item.id || item.instrument_token}</td>
+                                    <td className="font-bold">{item.name || item.tradingsymbol}</td>
+                                    <td
+                                        className="mini-chart-cell cursor-pointer"
+                                        onClick={() => handleStockClick(item)}
+                                        title="Click to view full chart"
+                                    >
+                                        <div className="mini-chart-wrapper">
+                                            <MiniCandleChart candles={item.candles || []} />
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span className={`badge ${position === 'Long' ? 'badge-success' :
+                                            position === 'Short' ? 'badge-danger' : 'badge-neutral'
+                                            }`}>
+                                            {position}
+                                        </span>
+                                    </td>
+                                    <td className="text-right">
+                                        <div className="flex gap-2 justify-end">
+                                            <button className="btn btn-sm btn-primary">Buy</button>
+                                            <button className="btn btn-sm btn-danger-outline">Sell</button>
+                                            <button className="btn btn-sm btn-outline">Modify</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>
@@ -424,7 +577,10 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                                 <button
                                     key={scale}
                                     className={`btn text-sm ${selectedScale === scale ? 'btn-primary' : 'btn-outline'}`}
-                                    onClick={() => setSelectedScale(scale)}
+                                    onClick={() => {
+                                        ensureScalesLoaded();
+                                        setSelectedScale(scale);
+                                    }}
                                 >
                                     {typeof scale === 'string' && scale.endsWith('d') ? scale.toUpperCase() : scale}
                                 </button>
@@ -441,6 +597,7 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                         <select
                             className="input"
                             value={selectedStrategy || ''}
+                            onFocus={ensureStrategiesLoaded}
                             onChange={(e) => setSelectedStrategy(e.target.value)}
                         >
                             <option value="" disabled>Select Strategy</option>
@@ -472,12 +629,13 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                             <h2>Nifty 50 Constituents</h2>
                         </div>
                         {renderStockTable(
+                            'nifty',
                             niftyStocks,
                             niftyQuery,
                             setNiftyQuery,
                             niftyTotal,
                             niftyError,
-                            () => setNiftyError('')
+                            dismissNiftyError
                         )}
                     </>
                 )}
@@ -488,12 +646,13 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                             <h2>Bank Nifty Constituents</h2>
                         </div>
                         {renderStockTable(
+                            'banknifty',
                             bankNiftyStocks,
                             bankQuery,
                             setBankQuery,
                             bankTotal,
                             bankError,
-                            () => setBankError('')
+                            dismissBankError
                         )}
                     </>
                 )}

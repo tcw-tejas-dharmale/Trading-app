@@ -1,26 +1,61 @@
 from datetime import timedelta
 from typing import Any
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm, HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from app.core import security, database
 from app.core.config import settings
 from app.models.user import User
-from app.schemas.user import Token, UserCreate, UserUpdate, User as UserSchema
+from app.schemas.user import Token, UserCreate, UserUpdate, User as UserSchema, LoginRequest
 from jose import jwt, JWTError
 
 router = APIRouter()
 http_bearer = HTTPBearer()
 
-@router.post("/login/access-token", response_model=Token)
-def login_access_token(db: Session = Depends(database.get_db), form_data: OAuth2PasswordRequestForm = Depends()) -> Any:
-    # user = db.query(User).filter(User.email == form_data.username).first()
-    user = db.query(User).filter(User.email == form_data.username).first()
+@router.post("/login/access-token", response_model=Token, include_in_schema=False)
+async def login_access_token(request: Request, db: Session = Depends(database.get_db)) -> Any:
+    login_in = None
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            payload = await request.json()
+            login_in = LoginRequest(**payload)
+        except (ValidationError, ValueError):
+            login_in = None
+    elif "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
+        form = await request.form()
+        email = form.get("email") or form.get("username")
+        password = form.get("password")
+        try:
+            login_in = LoginRequest(email=email, password=password)
+        except ValidationError:
+            login_in = None
+
+    if not login_in:
+        raise HTTPException(status_code=422, detail="Invalid login payload. Provide email and password.")
+
+    user = db.query(User).filter(User.email == login_in.email).first()
     if not user:
         raise HTTPException(status_code=400, detail="Incorrect email or password")
     
-    if not security.verify_password(form_data.password, user.hashed_password):
+    if not security.verify_password(login_in.password, user.hashed_password):
         raise HTTPException(status_code=400, detail="Incorrect email or password")
+    access_token_expires = timedelta(minutes=security.settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = security.create_access_token(
+        user.id, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@router.post("/login", response_model=Token)
+def login_user(login_in: LoginRequest, db: Session = Depends(database.get_db)) -> Any:
+    user = db.query(User).filter(User.email == login_in.email).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Incorrect email or password")
+
+    if not security.verify_password(login_in.password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Incorrect email or password")
+
     access_token_expires = timedelta(minutes=security.settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = security.create_access_token(
         user.id, expires_delta=access_token_expires

@@ -62,18 +62,14 @@ def get_scales(current_user: Optional[str] = Security(get_current_user_optional)
     """
     Get available time scales. Authentication is optional.
     """
-    return ["1m", "5m", "15m", "30m", "1h", "1d"]
+    return []
 
 @router.get("/strategies")
 def get_strategies(current_user: Optional[str] = Security(get_current_user_optional)):
     """
     Get available strategies. Authentication is optional.
     """
-    return [
-        {"id": "ma_crossover", "name": "Moving Average Crossover"},
-        {"id": "rsi_strategy", "name": "RSI Strategy"},
-        {"id": "bollinger_bands", "name": "Bollinger Bands"},
-    ]
+    return []
 
 @router.get("/historical-data")
 async def get_historical_data(

@@ -49,10 +49,7 @@ api.interceptors.response.use((response) => response, (error) => {
 });
 
 export const login = async (email, password) => {
-  const formData = new FormData();
-  formData.append('username', email); // OAuth2PasswordRequestForm expects username
-  formData.append('password', password);
-  const response = await api.post('/login/access-token', formData);
+  const response = await api.post('/login/access-token', { email, password });
   return response.data;
 };
 
@@ -151,6 +148,13 @@ export const fetchBankNiftyStocks = async (params = {}) => {
 
 export const fetchPositions = async () => {
   const response = await api.get('/market/positions', {
+    headers: getAuthHeaders(),
+  });
+  return response.data;
+};
+
+export const syncInstruments = async () => {
+  const response = await api.post('/market/sync-instruments', null, {
     headers: getAuthHeaders(),
   });
   return response.data;

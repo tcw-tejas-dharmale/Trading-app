@@ -26,3 +26,7 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     username: Optional[str] = None
+
+class LoginRequest(BaseModel):
+    email: str
+    password: constr(min_length=8, max_length=72)

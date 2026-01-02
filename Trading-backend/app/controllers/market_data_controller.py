@@ -1,4 +1,5 @@
 import time
+from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -7,10 +8,14 @@ from kiteconnect import KiteConnect
 from kiteconnect.exceptions import KiteException
 
 from app.core.config import settings
+from app.core.database import SessionLocal
+from app.models.app_setting import AppSetting
 from app.models.market import Stock
 
 
 class MarketDataController:
+    _TOKEN_SETTING_KEY = "zerodha_access_token"
+
     def __init__(self) -> None:
         self.api_key = settings.ZERODHA_API_KEY
         self.api_secret = settings.ZERODHA_API_SECRET
@@ -24,12 +29,72 @@ class MarketDataController:
         self._positions_cache: Dict[str, Any] = {"data": None, "ts": 0}
         self._candles_cache: Dict[str, Dict[str, Any]] = {}
 
+    def _env_path(self) -> Path:
+        return Path(__file__).resolve().parents[2] / ".env"
+
+    def _load_access_token_from_db(self) -> Optional[str]:
+        db = SessionLocal()
+        try:
+            row = db.query(AppSetting).filter(AppSetting.key == self._TOKEN_SETTING_KEY).first()
+            return row.value if row else None
+        finally:
+            db.close()
+
+    def _load_access_token_from_env_file(self) -> Optional[str]:
+        env_path = self._env_path()
+        if not env_path.exists():
+            return None
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            if line.strip().startswith("ZERODHA_ACCESS_TOKEN="):
+                return line.split("=", 1)[1].strip() or None
+        return None
+
+    def _write_access_token_to_env(self, token: str) -> None:
+        env_path = self._env_path()
+        lines: List[str] = []
+        if env_path.exists():
+            lines = env_path.read_text(encoding="utf-8").splitlines()
+        updated = False
+        new_lines: List[str] = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("ZERODHA_ACCESS_TOKEN=") or stripped.startswith("# ZERODHA_ACCESS_TOKEN="):
+                new_lines.append(f"ZERODHA_ACCESS_TOKEN={token}")
+                updated = True
+            else:
+                new_lines.append(line)
+        if not updated:
+            new_lines.append(f"ZERODHA_ACCESS_TOKEN={token}")
+        env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+
+    def _persist_access_token(self, token: str) -> None:
+        db = SessionLocal()
+        try:
+            row = db.query(AppSetting).filter(AppSetting.key == self._TOKEN_SETTING_KEY).first()
+            if row:
+                row.value = token
+            else:
+                row = AppSetting(key=self._TOKEN_SETTING_KEY, value=token)
+                db.add(row)
+            db.commit()
+        finally:
+            db.close()
+        self._write_access_token_to_env(token)
+
+    def _load_access_token(self) -> Optional[str]:
+        token = self._load_access_token_from_db()
+        if token:
+            return token
+        return self._load_access_token_from_env_file()
+
     def _require_kite(self) -> KiteConnect:
         if not self.kite:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Zerodha API key is not configured.",
             )
+        if not self.access_token:
+            self.access_token = self._load_access_token()
         if not self.access_token:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -62,6 +127,7 @@ class MarketDataController:
         self.access_token = session.get("access_token")
         if self.access_token:
             self.kite.set_access_token(self.access_token)
+            self._persist_access_token(self.access_token)
         return session
 
     def _cached_instruments(self, ttl_seconds: int = 600) -> List[Dict[str, Any]]:
@@ -94,6 +160,11 @@ class MarketDataController:
         now = time.time()
         if self._positions_cache["data"] and now - self._positions_cache["ts"] < ttl_seconds:
             return self._positions_cache["data"]
+        if not self.access_token:
+            self.access_token = self._load_access_token()
+        if not self.access_token:
+            self._positions_cache = {"data": [], "ts": now}
+            return []
         kite = self._require_kite()
         try:
             positions = kite.positions().get("net", [])
@@ -117,6 +188,10 @@ class MarketDataController:
                 missing.append(inst)
 
         if missing:
+            if not self.access_token:
+                self.access_token = self._load_access_token()
+            if not self.access_token:
+                return results
             kite = self._require_kite()
             try:
                 quotes = kite.quote(missing)
@@ -150,6 +225,11 @@ class MarketDataController:
         if cached and now - cached["ts"] < ttl_seconds:
             return cached["data"]
 
+        if not self.access_token:
+            self.access_token = self._load_access_token()
+        if not self.access_token:
+            self._candles_cache[cache_key] = {"data": [], "ts": now}
+            return []
         kite = self._require_kite()
         interval = self._interval_from_scale(scale)
         end = datetime.utcnow()

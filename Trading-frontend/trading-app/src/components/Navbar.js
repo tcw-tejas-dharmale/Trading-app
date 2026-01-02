@@ -33,7 +33,6 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
                 setInstruments(data);
                 const details = selectedInstrument || data[0];
                 setInstrumentDetails(details);
-                setIsInstrumentPanelOpen(true);
                 if (!selectedInstrument) {
                     onInstrumentChange(details);
                 }
@@ -48,7 +47,7 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
             setInstrumentError('Unable to load instruments. Please try again.');
             setIsInstrumentPanelOpen(false);
             const status = error?.response?.status;
-            if (status === 401 || status === 503) {
+            if (status === 401 || status === 403 || status === 503) {
                 try {
                     const response = await fetchZerodhaLoginUrl();
                     if (response?.login_url) {
@@ -100,47 +99,6 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
                             >
                                 {isFetchingInstruments ? 'Loading...' : 'Get Instrument'}
                             </button>
-                            {!instrumentError && instrumentDetails && isInstrumentPanelOpen && (
-                                <div className="instrument-panel card">
-                                    <div className="instrument-panel-header">
-                                        <div>
-                                            <div className="instrument-title">
-                                                {instrumentDetails.name || 'Instrument Details'}
-                                            </div>
-                                            <div className="instrument-subtitle">
-                                                Token {instrumentDetails.instrument_token ?? 'N/A'}
-                                            </div>
-                                        </div>
-                                        <div className="instrument-panel-actions">
-                                            <button
-                                                type="button"
-                                                className="instrument-close"
-                                                aria-label="Close instrument panel"
-                                                onClick={() => setIsInstrumentPanelOpen(false)}
-                                            >
-                                                <X size={16} />
-                                            </button>
-                                            <div className="instrument-count">
-                                                Showing 1 of {instruments.length}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="instrument-grid">
-                                        <div>
-                                            <span>Trading Symbol</span>
-                                            <strong>{instrumentDetails.tradingsymbol || 'N/A'}</strong>
-                                        </div>
-                                        <div>
-                                            <span>Exchange</span>
-                                            <strong>{instrumentDetails.exchange || 'N/A'}</strong>
-                                        </div>
-                                        <div>
-                                            <span>Segment</span>
-                                            <strong>{instrumentDetails.segment || 'N/A'}</strong>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
                         </div>
                     )}
                     {toast && (

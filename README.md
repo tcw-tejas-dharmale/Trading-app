@@ -67,6 +67,31 @@ To create a user quickly, use the Swagger UI at `http://localhost:8000/docs`:
 4. Execute.
 5. Use these credentials to log in on the frontend.
 
+### 5. Zerodha (Kite Connect) Setup Flow
+Step-by-step (real, production flow):
+1. Create a Zerodha developer app in the Kite Connect console and note your `api_key` and `api_secret`.
+2. Redirect users to Zerodha login:
+   `https://kite.trade/connect/login?api_key=YOUR_API_KEY&v=3`
+3. After login, Zerodha redirects to your `redirect_url` with a `request_token`.
+4. Exchange the `request_token` for an `access_token` server-side:
+   ```python
+   from kiteconnect import KiteConnect
+
+   kite = KiteConnect(api_key="YOUR_API_KEY")
+   data = kite.generate_session("REQUEST_TOKEN_FROM_URL", api_secret="YOUR_API_SECRET")
+   access_token = data["access_token"]
+   kite.set_access_token(access_token)
+   ```
+5. Store the access token (DB/Redis/env). It is valid for the trading day only.
+
+Important Zerodha rules:
+- Access tokens cannot be generated without login.
+- Tokens expire daily and require re-login.
+- Tokens must be generated server-side only.
+
+Local testing shortcut (temporary):
+Set `ZERODHA_ACCESS_TOKEN` in `Trading-backend/.env` if you already have a token.
+
 ## Project Structure
 - **Trading-backend**: FastAPI app with MVC structure (Routes, Controllers, Models).
 - **Trading-frontend**: React app with modern components and styling.
