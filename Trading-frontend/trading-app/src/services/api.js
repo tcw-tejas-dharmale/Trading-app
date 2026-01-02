@@ -4,13 +4,47 @@ const api = axios.create({
   baseURL: process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000/api/v1',
 });
 
+const getStoredToken = () => localStorage.getItem('token');
+const getAuthHeaders = () => {
+  const token = getStoredToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+const bootstrapToken = getStoredToken();
+if (bootstrapToken) {
+  api.defaults.headers.common.Authorization = `Bearer ${bootstrapToken}`;
+}
+
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
+  const token = getStoredToken();
   if (token) {
+    config.headers = config.headers || {};
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 }, (error) => {
+  return Promise.reject(error);
+});
+
+api.interceptors.response.use((response) => response, (error) => {
+  const status = error?.response?.status;
+  const token = getStoredToken();
+  const originalRequest = error?.config;
+  const hasAuthHeader = Boolean(originalRequest?.headers?.Authorization);
+
+  if (status === 401 && token && originalRequest && !originalRequest._retry && !hasAuthHeader) {
+    originalRequest._retry = true;
+    originalRequest.headers = originalRequest.headers || {};
+    originalRequest.headers.Authorization = `Bearer ${token}`;
+    return api(originalRequest);
+  }
+
+  if (status === 401) {
+    localStorage.removeItem('token');
+    if (window.location.pathname !== '/login') {
+      window.location.assign('/login');
+    }
+  }
   return Promise.reject(error);
 });
 
@@ -42,6 +76,21 @@ export const fetchInstruments = async () => {
   return response.data;
 };
 
+export const fetchZerodhaLoginUrl = async () => {
+  const response = await api.get('/market/zerodha/login-url', {
+    headers: getAuthHeaders(),
+  });
+  return response.data;
+};
+
+export const createZerodhaSession = async (requestToken) => {
+  const response = await api.post('/market/zerodha/session', null, {
+    params: { request_token: requestToken },
+    headers: getAuthHeaders(),
+  });
+  return response.data;
+};
+
 export const fetchScales = async () => {
   const response = await api.get('/market/scales');
   return response.data;
@@ -55,6 +104,7 @@ export const fetchStrategies = async () => {
 export const fetchHistoricalData = async (instrumentToken, scale) => {
   const response = await api.get('/market/historical-data', {
     params: { instrument_token: instrumentToken, scale },
+    headers: getAuthHeaders(),
   });
   return response.data;
 };
@@ -83,18 +133,26 @@ export const fetchRiskAssessment = async () => {
   return response.data;
 };
 
-export const fetchNiftyStocks = async () => {
-  const response = await api.get('/market/nifty-50');
+export const fetchNiftyStocks = async (params = {}) => {
+  const response = await api.get('/market/nifty-50', {
+    params,
+    headers: getAuthHeaders(),
+  });
   return response.data;
 };
 
-export const fetchBankNiftyStocks = async () => {
-  const response = await api.get('/market/bank-nifty');
+export const fetchBankNiftyStocks = async (params = {}) => {
+  const response = await api.get('/market/bank-nifty', {
+    params,
+    headers: getAuthHeaders(),
+  });
   return response.data;
 };
 
 export const fetchPositions = async () => {
-  const response = await api.get('/market/positions');
+  const response = await api.get('/market/positions', {
+    headers: getAuthHeaders(),
+  });
   return response.data;
 };
 

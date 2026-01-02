@@ -13,7 +13,7 @@ const SignupPage = () => {
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
-    const { signup } = useAuth(); // Assuming signup function exists in context, otherwise we need to implement it
+    const { signup, login } = useAuth(); // Assuming signup function exists in context, otherwise we need to implement it
     const navigate = useNavigate();
 
     const handleSubmit = async (e) => {
@@ -34,6 +34,14 @@ const SignupPage = () => {
                 // For now, let's mimic login or throw error.
                 // We will need to update AuthContext to support signup.
                 throw new Error("Signup function not implemented in context yet");
+            }
+            const token = localStorage.getItem('token');
+            if (!token && login) {
+                const loggedIn = await login(email, password);
+                if (!loggedIn) {
+                    setError('Account created, but login failed. Please sign in.');
+                    return;
+                }
             }
             navigate('/dashboard');
         } catch (err) {

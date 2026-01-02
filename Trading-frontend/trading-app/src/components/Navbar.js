@@ -1,19 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { fetchInstruments } from '../services/api';
+import { fetchInstruments, fetchZerodhaLoginUrl } from '../services/api';
+import { X } from 'lucide-react';
 import './Navbar.css';
 
 const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
     const { user, logout } = useAuth();
     const location = useLocation();
-    const navigate = useNavigate();
     const [instruments, setInstruments] = useState([]);
     const [instrumentDetails, setInstrumentDetails] = useState(null);
     const [instrumentError, setInstrumentError] = useState('');
     const [isFetchingInstruments, setIsFetchingInstruments] = useState(false);
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+    const [isInstrumentPanelOpen, setIsInstrumentPanelOpen] = useState(false);
+    const [toast, setToast] = useState(null);
     const userInitial = (user?.name || user?.email || '').trim().charAt(0).toUpperCase();
+
+    const showToast = (message, type = 'info') => {
+        setToast({ message, type });
+        setTimeout(() => {
+            setToast((current) => (current?.message === message ? null : current));
+        }, 3500);
+    };
 
     const loadInstruments = async () => {
         try {
@@ -24,9 +33,11 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
                 setInstruments(data);
                 const details = selectedInstrument || data[0];
                 setInstrumentDetails(details);
+                setIsInstrumentPanelOpen(true);
                 if (!selectedInstrument) {
                     onInstrumentChange(details);
                 }
+                showToast('Instrument data loaded.', 'success');
             } else {
                 throw new Error("No instruments found");
             }
@@ -35,6 +46,24 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
             setInstruments([]);
             setInstrumentDetails(null);
             setInstrumentError('Unable to load instruments. Please try again.');
+            setIsInstrumentPanelOpen(false);
+            const status = error?.response?.status;
+            if (status === 401 || status === 503) {
+                try {
+                    const response = await fetchZerodhaLoginUrl();
+                    if (response?.login_url) {
+                        window.open(response.login_url, '_blank', 'noopener,noreferrer');
+                        showToast('Opening Zerodha login. Complete login to connect.', 'info');
+                    } else {
+                        showToast('Unable to start Zerodha login. Please try again.', 'error');
+                    }
+                } catch (loginError) {
+                    console.error("Failed to load Zerodha login URL", loginError);
+                    showToast('Unable to start Zerodha login. Please check API key.', 'error');
+                }
+            } else {
+                showToast('Unable to load instruments. Please try again.', 'error');
+            }
         } finally {
             setIsFetchingInstruments(false);
         }
@@ -43,6 +72,7 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
     useEffect(() => {
         setIsUserMenuOpen(false);
     }, [location.pathname]);
+
 
     return (
         <nav className="navbar">
@@ -70,12 +100,7 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
                             >
                                 {isFetchingInstruments ? 'Loading...' : 'Get Instrument'}
                             </button>
-                            {instrumentError && (
-                                <div className="instrument-message instrument-error" role="alert">
-                                    {instrumentError}
-                                </div>
-                            )}
-                            {!instrumentError && instrumentDetails && (
+                            {!instrumentError && instrumentDetails && isInstrumentPanelOpen && (
                                 <div className="instrument-panel card">
                                     <div className="instrument-panel-header">
                                         <div>
@@ -86,8 +111,18 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
                                                 Token {instrumentDetails.instrument_token ?? 'N/A'}
                                             </div>
                                         </div>
-                                        <div className="instrument-count">
-                                            Showing 1 of {instruments.length}
+                                        <div className="instrument-panel-actions">
+                                            <button
+                                                type="button"
+                                                className="instrument-close"
+                                                aria-label="Close instrument panel"
+                                                onClick={() => setIsInstrumentPanelOpen(false)}
+                                            >
+                                                <X size={16} />
+                                            </button>
+                                            <div className="instrument-count">
+                                                Showing 1 of {instruments.length}
+                                            </div>
                                         </div>
                                     </div>
                                     <div className="instrument-grid">
@@ -106,6 +141,11 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
                                     </div>
                                 </div>
                             )}
+                        </div>
+                    )}
+                    {toast && (
+                        <div className={`toast toast-${toast.type}`} role="status">
+                            {toast.message}
                         </div>
                     )}
                     <div className="user-menu-wrapper">

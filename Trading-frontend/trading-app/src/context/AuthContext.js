@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { login as loginApi, signup as signupApi, fetchCurrentUser, updateCurrentUser } from '../services/api';
+import api, { login as loginApi, signup as signupApi, fetchCurrentUser, updateCurrentUser } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -13,12 +13,14 @@ export const AuthProvider = ({ children }) => {
             setLoading(false);
             return;
         }
+        api.defaults.headers.common.Authorization = `Bearer ${token}`;
         const loadUser = async () => {
             try {
                 const profile = await fetchCurrentUser();
                 setUser({ token, ...profile });
             } catch (error) {
                 localStorage.removeItem('token');
+                delete api.defaults.headers.common.Authorization;
                 setUser(null);
             } finally {
                 setLoading(false);
@@ -31,6 +33,7 @@ export const AuthProvider = ({ children }) => {
         try {
             const data = await loginApi(email, password);
             localStorage.setItem('token', data.access_token);
+            api.defaults.headers.common.Authorization = `Bearer ${data.access_token}`;
             setUser({ token: data.access_token, email });
             try {
                 const profile = await fetchCurrentUser();
@@ -50,12 +53,14 @@ export const AuthProvider = ({ children }) => {
             const data = await signupApi(email, password, name);
             if (data.access_token) {
                 localStorage.setItem('token', data.access_token);
+                api.defaults.headers.common.Authorization = `Bearer ${data.access_token}`;
                 setUser({ token: data.access_token });
                 return true;
             }
 
             const loginData = await loginApi(email, password);
             localStorage.setItem('token', loginData.access_token);
+            api.defaults.headers.common.Authorization = `Bearer ${loginData.access_token}`;
             setUser({ token: loginData.access_token, email });
             try {
                 const profile = await fetchCurrentUser();
@@ -72,6 +77,7 @@ export const AuthProvider = ({ children }) => {
 
     const logout = () => {
         localStorage.removeItem('token');
+        delete api.defaults.headers.common.Authorization;
         setUser(null);
     };
 

@@ -6,6 +6,7 @@ import HomePage from './components/HomePage';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import ProfilePage from './pages/ProfilePage';
+import ZerodhaCallback from './pages/ZerodhaCallback';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import './App.css';
 
@@ -48,6 +49,7 @@ function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
               <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/zerodha/callback" element={<ZerodhaCallback />} />
             </Routes>
           </main>
         </div>

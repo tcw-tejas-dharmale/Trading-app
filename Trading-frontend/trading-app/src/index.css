@@ -196,6 +196,16 @@ button {
   border-color: var(--accent);
 }
 
+.btn-danger-outline {
+  background-color: transparent;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+}
+
+.btn-danger-outline:hover {
+  background-color: rgba(239, 68, 68, 0.12);
+}
+
 .input {
   background-color: var(--bg-secondary);
   border: 1px solid var(--border);

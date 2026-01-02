@@ -58,6 +58,29 @@ const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage =
         isBullish: d.close >= d.open
     }));
 
+    const latestCandle = candleData[candleData.length - 1];
+    const tradeMarkers = latestCandle ? [
+        {
+            label: 'Open Trade',
+            value: latestCandle.close,
+            color: '#38bdf8',
+            bg: 'rgba(56, 189, 248, 0.18)'
+        },
+        {
+            label: 'Stop Loss',
+            value: latestCandle.close * 0.985,
+            color: '#f97316',
+            bg: 'rgba(249, 115, 22, 0.18)'
+        },
+        {
+            label: 'Take Profit',
+            value: latestCandle.close * 1.015,
+            color: '#22c55e',
+            bg: 'rgba(34, 197, 94, 0.18)'
+        }
+    ] : [];
+    const formatPrice = (value) => (Number.isFinite(value) ? value.toFixed(2) : '--');
+
     // Prepare data for chart
     const isDayOrAbove = ['1d', '2d', '1M'].includes(scale);
     const labels = safeData.map(d => new Date(d.date).toLocaleString([],
@@ -299,6 +322,55 @@ const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage =
         }
     };
 
+    const tradeMarkerPlugin = {
+        id: 'tradeMarkers',
+        afterDatasetsDraw: (chart) => {
+            if (!tradeMarkers.length) return;
+            const ctx = chart.ctx;
+            const chartArea = chart.chartArea;
+            const yScale = chart.scales.y;
+            if (!chartArea || !yScale) return;
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(chartArea.left, chartArea.top, chartArea.width, chartArea.height);
+            ctx.clip();
+            ctx.font = '12px "Space Grotesk", sans-serif';
+
+            tradeMarkers.forEach((marker) => {
+                const y = yScale.getPixelForValue(marker.value);
+                if (y < chartArea.top || y > chartArea.bottom) return;
+
+                ctx.setLineDash([6, 6]);
+                ctx.strokeStyle = marker.color;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(chartArea.left, y);
+                ctx.lineTo(chartArea.right, y);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                const text = `${marker.label} ${formatPrice(marker.value)}`;
+                const padding = 6;
+                const textWidth = ctx.measureText(text).width;
+                const boxWidth = textWidth + padding * 2;
+                const boxHeight = 20;
+                const x = chartArea.right - boxWidth - 8;
+                const yBox = Math.min(chartArea.bottom - boxHeight, Math.max(chartArea.top, y - boxHeight / 2));
+
+                ctx.fillStyle = marker.bg;
+                ctx.strokeStyle = marker.color;
+                ctx.lineWidth = 1;
+                ctx.fillRect(x, yBox, boxWidth, boxHeight);
+                ctx.strokeRect(x, yBox, boxWidth, boxHeight);
+                ctx.fillStyle = '#e2e8f0';
+                ctx.fillText(text, x + padding, yBox + 14);
+            });
+
+            ctx.restore();
+        }
+    };
+
 
 
     // Create datasets for candlestick (moving averages only, candlesticks drawn by plugin)
@@ -344,7 +416,7 @@ const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage =
         <div className="candlestick-chart-wrapper">
             <Line
                 data={{ labels, datasets: candlestickDatasets }}
-                plugins={[candlestickPlugin]}
+                plugins={[candlestickPlugin, tradeMarkerPlugin]}
                 options={{
                     responsive: true,
                     maintainAspectRatio: false,

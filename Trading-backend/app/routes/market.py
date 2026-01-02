@@ -1,13 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, Security
+from fastapi import APIRouter, Depends, HTTPException, Security, Request
 from typing import Optional, Any
 from app.core import database
 from app.controllers.market_data_controller import market_controller
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from app.core.config import settings
+from app.utils.rate_limiter import SimpleRateLimiter
 
 router = APIRouter()
 http_bearer = HTTPBearer(auto_error=False)
+rate_limiter = SimpleRateLimiter(limit=60, window_seconds=60)
 
 def get_current_user_optional(credentials: Optional[HTTPAuthorizationCredentials] = Security(http_bearer)):
     """
@@ -27,6 +29,23 @@ def get_current_user_optional(credentials: Optional[HTTPAuthorizationCredentials
     except (JWTError, Exception):
         return None
 
+def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Security(http_bearer)):
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    try:
+        token = credentials.credentials
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        return user_id
+    except (JWTError, Exception):
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+def apply_rate_limit(user_id: Optional[str]) -> None:
+    key = f"user:{user_id}" if user_id else "anonymous"
+    rate_limiter.check(key)
+
 @router.get("/instruments")
 async def get_instruments(
     db: Any = Depends(database.get_db),
@@ -35,6 +54,7 @@ async def get_instruments(
     """
     Get list of available instruments. Authentication is optional.
     """
+    apply_rate_limit(current_user)
     return await market_controller.get_instruments(db)
 
 @router.get("/scales")
@@ -61,11 +81,12 @@ async def get_historical_data(
     scale: str = "5m",
     start: Optional[str] = None,
     end: Optional[str] = None,
-    current_user: Optional[str] = Security(get_current_user_optional)
+    current_user: str = Security(get_current_user)
 ):
     """
     Get historical candle data for an instrument.
     """
+    apply_rate_limit(current_user)
     return await market_controller.get_historical_data(
         instrument_token=instrument_token,
         interval=scale,
@@ -76,35 +97,77 @@ async def get_historical_data(
 @router.get("/nifty-50")
 async def get_nifty_50(
     db: Any = Depends(database.get_db),
-    current_user: Optional[str] = Security(get_current_user_optional)
+    scale: str = "5m",
+    search: Optional[str] = None,
+    sort_by: str = "name",
+    sort_dir: str = "asc",
+    page: int = 1,
+    page_size: int = 10,
+    current_user: str = Security(get_current_user)
 ):
     """
     Get Nifty 50 constituents.
     """
-    return await market_controller.get_nifty50(db)
+    apply_rate_limit(current_user)
+    return await market_controller.get_nifty50(
+        db=db,
+        scale=scale,
+        search=search,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+        page=page,
+        page_size=page_size,
+    )
 
 @router.get("/bank-nifty")
 async def get_bank_nifty(
     db: Any = Depends(database.get_db),
-    current_user: Optional[str] = Security(get_current_user_optional)
+    scale: str = "5m",
+    search: Optional[str] = None,
+    sort_by: str = "name",
+    sort_dir: str = "asc",
+    page: int = 1,
+    page_size: int = 10,
+    current_user: str = Security(get_current_user)
 ):
     """
     Get Bank Nifty constituents.
     """
-    return await market_controller.get_banknifty(db)
+    apply_rate_limit(current_user)
+    return await market_controller.get_banknifty(
+        db=db,
+        scale=scale,
+        search=search,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+        page=page,
+        page_size=page_size,
+    )
 
 @router.get("/positions")
 async def get_positions(
-    db: Any = Depends(database.get_db),
-    current_user: Optional[str] = Security(get_current_user_optional)
+    current_user: str = Security(get_current_user)
 ):
     """
     Get Open Positions.
     """
-    user_id = current_user
-    if not user_id:
-        return []
-    return await market_controller.get_positions(db, user_id)
+    apply_rate_limit(current_user)
+    return await market_controller.get_positions()
+
+@router.get("/zerodha/login-url")
+def get_zerodha_login_url(
+    current_user: str = Security(get_current_user)
+):
+    apply_rate_limit(current_user)
+    return {"login_url": market_controller.get_login_url()}
+
+@router.post("/zerodha/session")
+def create_zerodha_session(
+    request_token: str,
+    current_user: str = Security(get_current_user)
+):
+    apply_rate_limit(current_user)
+    return market_controller.create_session(request_token)
 
 @router.post("/sync-instruments")
 async def sync_instruments(

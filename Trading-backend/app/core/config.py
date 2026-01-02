@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     # Zerodha
     ZERODHA_API_KEY: str = ""
     ZERODHA_API_SECRET: str = ""
+    ZERODHA_ACCESS_TOKEN: str = ""
 
     BACKEND_CORS_ORIGINS: list[str] = [
         "http://localhost:3000",

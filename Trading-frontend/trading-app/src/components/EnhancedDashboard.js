@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { fetchScales, fetchStrategies, fetchNiftyStocks, fetchBankNiftyStocks, fetchPositions, fetchHistoricalData } from '../services/api';
 import CandlestickChart from './CandlestickChart';
@@ -68,6 +68,12 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
 
     const [niftyStocks, setNiftyStocks] = useState([]);
     const [bankNiftyStocks, setBankNiftyStocks] = useState([]);
+    const [niftyQuery, setNiftyQuery] = useState({ page: 1, pageSize: 10, search: '', sortBy: 'name', sortDir: 'asc' });
+    const [bankQuery, setBankQuery] = useState({ page: 1, pageSize: 10, search: '', sortBy: 'name', sortDir: 'asc' });
+    const [niftyTotal, setNiftyTotal] = useState(0);
+    const [bankTotal, setBankTotal] = useState(0);
+    const [niftyError, setNiftyError] = useState('');
+    const [bankError, setBankError] = useState('');
     const [openPositions, setOpenPositions] = useState([]);
 
     // Modal State
@@ -80,24 +86,52 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
     const [searchParams, setSearchParams] = useSearchParams();
 
     // Function to refresh market data and positions
-    const refreshData = async () => {
+    const refreshPositions = async () => {
         try {
-            const [nifty, bankNifty, positions] = await Promise.all([
-                fetchNiftyStocks(),
-                fetchBankNiftyStocks(),
-                fetchPositions()
-            ]);
-            setNiftyStocks(nifty);
-            setBankNiftyStocks(bankNifty);
+            const positions = await fetchPositions();
             setOpenPositions(positions);
         } catch (error) {
             console.error("Failed to load market data", error);
-            // Optionally, set to empty arrays or handle error state
-            setNiftyStocks([]);
-            setBankNiftyStocks([]);
             setOpenPositions([]);
         }
     };
+
+    const fetchTableData = useCallback(async (segment) => {
+        const query = segment === 'nifty' ? niftyQuery : bankQuery;
+        const params = {
+            scale: selectedScale,
+            search: query.search || undefined,
+            sort_by: query.sortBy,
+            sort_dir: query.sortDir,
+            page: query.page,
+            page_size: query.pageSize,
+        };
+
+        try {
+            if (segment === 'nifty') {
+                const response = await fetchNiftyStocks(params);
+                setNiftyStocks(response.items || []);
+                setNiftyTotal(response.total || 0);
+                setNiftyError('');
+            } else {
+                const response = await fetchBankNiftyStocks(params);
+                setBankNiftyStocks(response.items || []);
+                setBankTotal(response.total || 0);
+                setBankError('');
+            }
+        } catch (error) {
+            console.error("Failed to load market data", error);
+            if (segment === 'nifty') {
+                setNiftyStocks([]);
+                setNiftyTotal(0);
+                setNiftyError('Unable to load Nifty 50 data. Please connect Zerodha and try again.');
+            } else {
+                setBankNiftyStocks([]);
+                setBankTotal(0);
+                setBankError('Unable to load Bank Nifty data. Please connect Zerodha and try again.');
+            }
+        }
+    }, [bankQuery, niftyQuery, selectedScale]);
 
     // 1. Initialize Options and initial data fetch
     useEffect(() => {
@@ -140,7 +174,7 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
         };
 
         init();
-        refreshData(); // Initial fetch of market data
+        refreshPositions();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -163,7 +197,7 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
         if (selectedScale && selectedStrategy) {
             setSearchParams({ scale: selectedScale, strategy: selectedStrategy }, { replace: true });
         }
-        refreshData();
+        refreshPositions();
     }, [selectedScale, selectedStrategy, setSearchParams]);
 
 
@@ -209,8 +243,71 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
         setModalChartData([]);
     };
 
-    const renderStockTable = (data) => (
+    const latestCandle = modalChartData.length > 0 ? modalChartData[modalChartData.length - 1] : null;
+    const priceChange = latestCandle ? latestCandle.close - latestCandle.open : null;
+    const priceChangePct = latestCandle ? (priceChange / latestCandle.open) * 100 : null;
+
+    useEffect(() => {
+        fetchTableData(activeTab);
+    }, [activeTab, fetchTableData]);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            fetchTableData(activeTab);
+        }, 15000);
+        return () => clearInterval(interval);
+    }, [activeTab, fetchTableData]);
+
+    const renderStockTable = (data, query, setQuery, total, errorMessage, onDismissError) => (
         <div className="stock-table-container card">
+            <div className="table-toolbar">
+                <div className="table-search">
+                    <label className="text-secondary text-sm">Filter</label>
+                    <input
+                        className="input"
+                        placeholder="Search by name or symbol"
+                        value={query.search}
+                        onChange={(e) => setQuery((prev) => ({ ...prev, search: e.target.value, page: 1 }))}
+                    />
+                </div>
+                <div className="table-sort">
+                    <label className="text-secondary text-sm">Sort by</label>
+                    <select
+                        className="input"
+                        value={query.sortBy}
+                        onChange={(e) => setQuery((prev) => ({ ...prev, sortBy: e.target.value }))}
+                    >
+                        <option value="name">Company Name</option>
+                        <option value="id">ID</option>
+                        <option value="price">Last Price</option>
+                        <option value="position">Position</option>
+                    </select>
+                </div>
+                <div className="table-sort">
+                    <label className="text-secondary text-sm">Order</label>
+                    <select
+                        className="input"
+                        value={query.sortDir}
+                        onChange={(e) => setQuery((prev) => ({ ...prev, sortDir: e.target.value }))}
+                    >
+                        <option value="asc">Ascending</option>
+                        <option value="desc">Descending</option>
+                    </select>
+                </div>
+            </div>
+            {errorMessage && (
+                <div className="instrument-message instrument-error dismissible" role="alert">
+                    <span>{errorMessage}</span>
+                    <button
+                        type="button"
+                        className="error-dismiss"
+                        aria-label="Dismiss error"
+                        onClick={onDismissError}
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
+            )}
             <div className="overflow-x-auto">
                 <table className="enhanced-table">
                     <thead>
@@ -224,16 +321,16 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                     </thead>
                     <tbody>
                         {data.map((item) => (
-                            <tr key={item.id} className="stock-row">
-                                <td>{item.id}</td>
-                                <td className="font-bold">{item.name}</td>
+                            <tr key={item.instrument_token || item.id} className="stock-row">
+                                <td>{item.id || item.instrument_token}</td>
+                                <td className="font-bold">{item.name || item.tradingsymbol}</td>
                                 <td
                                     className="mini-chart-cell cursor-pointer"
                                     onClick={() => handleStockClick(item)}
                                     title="Click to view full chart"
                                 >
                                     <div className="mini-chart-wrapper">
-                                        <MiniCandleChart candles={item.candles} />
+                                        <MiniCandleChart candles={item.candles || []} />
                                     </div>
                                 </td>
                                 <td>
@@ -247,12 +344,44 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                                     <div className="flex gap-2 justify-end">
                                         <button className="btn btn-sm btn-primary">Buy</button>
                                         <button className="btn btn-sm btn-danger-outline">Sell</button>
+                                        <button className="btn btn-sm btn-outline">Modify</button>
                                     </div>
                                 </td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
+            </div>
+            <div className="table-pagination">
+                <div className="text-secondary text-sm">
+                    Showing {total === 0 ? 0 : (query.page - 1) * query.pageSize + 1}-
+                    {Math.min(query.page * query.pageSize, total)} of {total}
+                </div>
+                <div className="pagination-controls">
+                    <button
+                        className="btn btn-sm btn-outline"
+                        onClick={() => setQuery((prev) => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
+                        disabled={query.page === 1}
+                    >
+                        Prev
+                    </button>
+                    <button
+                        className="btn btn-sm btn-outline"
+                        onClick={() => setQuery((prev) => ({ ...prev, page: prev.page + 1 }))}
+                        disabled={query.page * query.pageSize >= total}
+                    >
+                        Next
+                    </button>
+                    <select
+                        className="input"
+                        value={query.pageSize}
+                        onChange={(e) => setQuery((prev) => ({ ...prev, pageSize: Number(e.target.value), page: 1 }))}
+                    >
+                        {[10, 20, 30, 50].map((size) => (
+                            <option key={size} value={size}>{size} / page</option>
+                        ))}
+                    </select>
+                </div>
             </div>
         </div>
     );
@@ -327,7 +456,7 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                         <button
                             type="button"
                             className="btn btn-outline scan-stock-btn"
-                            onClick={refreshData}
+                            onClick={refreshPositions}
                         >
                             Run Scan
                         </button>
@@ -342,7 +471,14 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                         <div className="section-header">
                             <h2>Nifty 50 Constituents</h2>
                         </div>
-                        {renderStockTable(niftyStocks)}
+                        {renderStockTable(
+                            niftyStocks,
+                            niftyQuery,
+                            setNiftyQuery,
+                            niftyTotal,
+                            niftyError,
+                            () => setNiftyError('')
+                        )}
                     </>
                 )}
 
@@ -351,7 +487,14 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                         <div className="section-header">
                             <h2>Bank Nifty Constituents</h2>
                         </div>
-                        {renderStockTable(bankNiftyStocks)}
+                        {renderStockTable(
+                            bankNiftyStocks,
+                            bankQuery,
+                            setBankQuery,
+                            bankTotal,
+                            bankError,
+                            () => setBankError('')
+                        )}
                     </>
                 )}
 
@@ -402,10 +545,34 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                     <div className="modal-overlay">
                         <div className="modal-content card">
                             <div className="modal-header flex justify-between items-center mb-4">
-                                <h2>{selectedStockForChart.name} - Detailed Analysis</h2>
+                                <div>
+                                    <h2>{selectedStockForChart.name} - Detailed Analysis</h2>
+                                    <p className="modal-subtitle">Live candlestick view with trade overlays</p>
+                                </div>
                                 <button className="btn-icon" onClick={closeModal}>
                                     <X size={24} />
                                 </button>
+                            </div>
+                            <div className="modal-meta">
+                                <div className="meta-item">
+                                    <span>Timeframe</span>
+                                    <strong>{typeof selectedScale === 'string' && selectedScale.endsWith('d') ? selectedScale.toUpperCase() : selectedScale}</strong>
+                                </div>
+                                <div className="meta-item">
+                                    <span>Last Close</span>
+                                    <strong>{latestCandle ? latestCandle.close.toFixed(2) : '--'}</strong>
+                                </div>
+                                <div className={`meta-item ${priceChange >= 0 ? 'positive' : 'negative'}`}>
+                                    <span>Change</span>
+                                    <strong>
+                                        {priceChange !== null ? `${priceChange >= 0 ? '+' : ''}${priceChange.toFixed(2)}` : '--'}
+                                        {priceChangePct !== null ? ` (${priceChangePct >= 0 ? '+' : ''}${priceChangePct.toFixed(2)}%)` : ''}
+                                    </strong>
+                                </div>
+                                <div className="meta-item">
+                                    <span>Volume</span>
+                                    <strong>{Number.isFinite(latestCandle?.volume) ? latestCandle.volume.toLocaleString() : '--'}</strong>
+                                </div>
                             </div>
                             <div className="modal-body" style={{ height: '400px', width: '100%' }}>
                                 <CandlestickChart
