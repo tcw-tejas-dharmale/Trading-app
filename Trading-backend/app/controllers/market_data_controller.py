@@ -28,6 +28,7 @@ class MarketDataController:
         self._instruments_cache: Dict[str, Any] = {"data": None, "ts": 0}
         self._quotes_cache: Dict[str, Dict[str, Any]] = {}
         self._positions_cache: Dict[str, Any] = {"data": None, "ts": 0}
+        self._holdings_cache: Dict[str, Any] = {"data": None, "ts": 0}
         self._candles_cache: Dict[str, Dict[str, Any]] = {}
         self._index_cache: Dict[str, Dict[str, Any]] = {}
 
@@ -210,6 +211,95 @@ class MarketDataController:
         self._positions_cache = {"data": positions, "ts": now}
         return positions
 
+    def _is_market_open(self) -> bool:
+        now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        if now.weekday() >= 5:
+            return False
+        market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
+        market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+        return market_open <= now <= market_close
+
+    def get_margins(self) -> Dict[str, Any]:
+        kite = self._require_kite()
+        try:
+            margins = kite.margins()
+        except KiteException as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Unable to fetch margins from Zerodha.",
+            ) from exc
+        return margins
+
+    def get_quote(self, symbols: List[str]) -> Dict[str, Any]:
+        if not symbols:
+            return {}
+        kite = self._require_kite()
+        try:
+            return kite.quote(symbols)
+        except KiteException as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Unable to fetch quotes from Zerodha.",
+            ) from exc
+
+    def get_orders(self) -> List[Dict[str, Any]]:
+        kite = self._require_kite()
+        try:
+            return kite.orders()
+        except KiteException as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Unable to fetch orders from Zerodha.",
+            ) from exc
+
+    def get_order_status(self, order_id: str) -> Dict[str, Any]:
+        kite = self._require_kite()
+        try:
+            history = kite.order_history(order_id)
+        except KiteException as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Unable to fetch order status from Zerodha.",
+            ) from exc
+        if not history:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Order not found.",
+            )
+        return history[-1]
+
+    def get_order_margins(self, order: Dict[str, Any]) -> Dict[str, Any]:
+        kite = self._require_kite()
+        params = {key: value for key, value in order.items() if value is not None}
+        try:
+            margin_list = kite.order_margins([params])
+        except KiteException as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Unable to fetch order margins from Zerodha.",
+            ) from exc
+        return margin_list[0] if margin_list else {}
+
+    def _get_holdings(self, ttl_seconds: int = 10) -> List[Dict[str, Any]]:
+        now = time.time()
+        if self._holdings_cache["data"] and now - self._holdings_cache["ts"] < ttl_seconds:
+            return self._holdings_cache["data"]
+        if not self.access_token:
+            self.access_token = self._load_access_token()
+        if not self.access_token:
+            self._holdings_cache = {"data": [], "ts": now}
+            return []
+        kite = self._require_kite()
+        try:
+            holdings = kite.holdings()
+        except KiteException as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Unable to fetch holdings from Zerodha.",
+            ) from exc
+        self._holdings_cache = {"data": holdings, "ts": now}
+        return holdings
+
     def _position_qty(self, position: Dict[str, Any]) -> int:
         if position is None:
             return 0
@@ -312,9 +402,15 @@ class MarketDataController:
     def _symbols_from_db(self, db, segment: str) -> List[str]:
         symbol_map = self._symbol_map()
         if segment == "NIFTY50":
-            return self._filter_symbols_by_list(symbol_map, self._nse_universe_symbols())
+            nifty_symbols = self._nifty50_symbols()
+            if not nifty_symbols:
+                nifty_symbols = self._nse_universe_symbols()
+            return self._filter_symbols_by_list(symbol_map, nifty_symbols)
         if segment == "BANKNIFTY":
-            return self._filter_symbols_by_list(symbol_map, self._banknifty_symbols())
+            bank_symbols = self._nifty_category_symbols("banks")
+            if not bank_symbols:
+                bank_symbols = self._banknifty_symbols()
+            return self._filter_symbols_by_list(symbol_map, bank_symbols)
         return list(symbol_map.keys())
 
     def _filter_symbols_by_list(self, symbol_map: Dict[str, Dict[str, Any]], symbols: List[str]) -> List[str]:
@@ -365,10 +461,7 @@ class MarketDataController:
 
     def _banknifty_symbols(self) -> List[str]:
         url = "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20BANK"
-        bank_symbols = self._fetch_index_symbols(url, "BANKNIFTY")
-        nifty_symbols = self._nifty50_symbols()
-        nifty_set = {symbol.strip().upper() for symbol in nifty_symbols if symbol}
-        return [symbol for symbol in bank_symbols if symbol and symbol.strip().upper() in nifty_set]
+        return self._fetch_index_symbols(url, "BANKNIFTY")
 
     def _nifty_category_symbols(self, category: str) -> List[str]:
         mapping = {
@@ -829,6 +922,26 @@ class MarketDataController:
             )
         return results
 
+    async def get_holdings(self):
+        holdings = self._get_holdings()
+        results = []
+        for holding in holdings:
+            qty = holding.get("quantity") or 0
+            avg = holding.get("average_price") or 0
+            ltp = holding.get("last_price") or holding.get("close_price") or avg
+            pnl = (ltp - avg) * qty if qty else 0
+            results.append(
+                {
+                    "id": holding.get("instrument_token"),
+                    "instrument": holding.get("tradingsymbol"),
+                    "qty": qty,
+                    "avgPrice": avg,
+                    "ltp": ltp,
+                    "pnl": pnl,
+                }
+            )
+        return results
+
     def place_order(self, order: Dict[str, Any]) -> Dict[str, Any]:
         kite = self._require_kite()
         tradingsymbol = (order.get("tradingsymbol") or "").strip().upper()
@@ -875,6 +988,41 @@ class MarketDataController:
         }
         params = {key: value for key, value in params.items() if value is not None}
 
+        market_open = self._is_market_open()
+        if not market_open and params.get("variety") != "amo":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Market is closed. Use AMO to place after-market orders.",
+            )
+
+        margin_data = None
+        try:
+            margin_list = kite.order_margins([params])
+            if margin_list:
+                margin_data = margin_list[0]
+        except KiteException:
+            margin_data = None
+
+        if margin_data and margin_data.get("total") is not None:
+            try:
+                margins = kite.margins().get("equity", {})
+                available = (
+                    margins.get("available", {}).get("cash")
+                    or margins.get("available", {}).get("live_balance")
+                    or margins.get("available", {}).get("opening_balance")
+                    or 0
+                )
+                required = float(margin_data.get("total") or 0)
+                if required > float(available):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Insufficient funds or margin to place this order.",
+                    )
+            except HTTPException:
+                raise
+            except Exception:
+                pass
+
         try:
             order_id = kite.place_order(**params)
         except KiteException as exc:
@@ -884,7 +1032,12 @@ class MarketDataController:
                 detail=f"Order rejected by Zerodha: {error_detail}",
             ) from exc
 
-        return {"order_id": order_id}
+        return {
+            "order_id": order_id,
+            "market_open": market_open,
+            "required_margin": margin_data.get("total") if margin_data else None,
+            "charges": margin_data.get("charges") if margin_data else None,
+        }
 
 
 market_controller = MarketDataController()

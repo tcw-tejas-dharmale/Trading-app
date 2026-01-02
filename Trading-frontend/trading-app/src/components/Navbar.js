@@ -2,18 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { fetchInstruments, fetchZerodhaLoginUrl } from '../services/api';
-import { X } from 'lucide-react';
 import './Navbar.css';
 
 const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
     const { user, logout } = useAuth();
     const location = useLocation();
-    const [instruments, setInstruments] = useState([]);
-    const [instrumentDetails, setInstrumentDetails] = useState(null);
-    const [instrumentError, setInstrumentError] = useState('');
     const [isFetchingInstruments, setIsFetchingInstruments] = useState(false);
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-    const [isInstrumentPanelOpen, setIsInstrumentPanelOpen] = useState(false);
     const [toast, setToast] = useState(null);
     const userInitial = (user?.name || user?.email || '').trim().charAt(0).toUpperCase();
 
@@ -27,12 +22,9 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
     const loadInstruments = async () => {
         try {
             setIsFetchingInstruments(true);
-            setInstrumentError('');
             const data = await fetchInstruments();
             if (Array.isArray(data) && data.length > 0) {
-                setInstruments(data);
                 const details = selectedInstrument || data[0];
-                setInstrumentDetails(details);
                 if (!selectedInstrument) {
                     onInstrumentChange(details);
                 }
@@ -42,10 +34,6 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
             }
         } catch (error) {
             console.error("Failed to load instruments", error);
-            setInstruments([]);
-            setInstrumentDetails(null);
-            setInstrumentError('Unable to load instruments. Please try again.');
-            setIsInstrumentPanelOpen(false);
             const status = error?.response?.status;
             if (status === 401 || status === 403 || status === 503) {
                 try {

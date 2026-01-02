@@ -33,6 +33,7 @@ export const AuthProvider = ({ children }) => {
         try {
             const data = await loginApi(email, password);
             localStorage.setItem('token', data.access_token);
+            localStorage.setItem('zerodha_connected', 'false');
             api.defaults.headers.common.Authorization = `Bearer ${data.access_token}`;
             setUser({ token: data.access_token, email });
             try {
@@ -53,6 +54,7 @@ export const AuthProvider = ({ children }) => {
             const data = await signupApi(email, password, name);
             if (data.access_token) {
                 localStorage.setItem('token', data.access_token);
+                localStorage.setItem('zerodha_connected', 'false');
                 api.defaults.headers.common.Authorization = `Bearer ${data.access_token}`;
                 setUser({ token: data.access_token });
                 return true;
@@ -60,6 +62,7 @@ export const AuthProvider = ({ children }) => {
 
             const loginData = await loginApi(email, password);
             localStorage.setItem('token', loginData.access_token);
+            localStorage.setItem('zerodha_connected', 'false');
             api.defaults.headers.common.Authorization = `Bearer ${loginData.access_token}`;
             setUser({ token: loginData.access_token, email });
             try {
@@ -77,6 +80,7 @@ export const AuthProvider = ({ children }) => {
 
     const logout = () => {
         localStorage.removeItem('token');
+        localStorage.setItem('zerodha_connected', 'false');
         delete api.defaults.headers.common.Authorization;
         setUser(null);
     };

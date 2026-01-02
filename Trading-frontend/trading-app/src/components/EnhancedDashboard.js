@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { fetchScales, fetchStrategies, fetchNiftyStocks, fetchBankNiftyStocks, fetchPositions, fetchHistoricalData, fetchZerodhaLoginUrl, syncInstruments, placeOrder } from '../services/api';
+import { fetchScales, fetchStrategies, fetchNiftyStocks, fetchBankNiftyStocks, fetchPositions, fetchHoldings, fetchMargins, fetchQuote, fetchOrderMargins, fetchOrderStatus, fetchOrders, fetchHistoricalData, fetchZerodhaLoginUrl, syncInstruments, placeOrder } from '../services/api';
 import CandlestickChart from './CandlestickChart';
 import { Clock, Sliders, Search, Briefcase, X } from 'lucide-react';
 import './EnhancedDashboard.css';
@@ -57,7 +57,7 @@ const MiniCandleChart = ({ candles }) => {
     );
 };
 
-const EnhancedDashboard = ({ selectedInstrument }) => {
+const EnhancedDashboard = () => {
     const excludedScales = useMemo(() => new Set(['4h']), []);
     const preferredScales = ['1m', '5m', '15m', '30m', '1h', '1d', '2d', '1M'];
     const [scales, setScales] = useState(preferredScales);
@@ -66,7 +66,7 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
     const [strategiesLoaded, setStrategiesLoaded] = useState(false);
     const [selectedScale, setSelectedScale] = useState('5m');
     const [selectedStrategy, setSelectedStrategy] = useState(null);
-    const [activeTab, setActiveTab] = useState('nifty'); // 'nifty', 'banknifty', 'openposition'
+    const [activeTab, setActiveTab] = useState('nifty'); // 'nifty', 'banknifty', 'openposition', 'holdings'
 
     const [niftyStocks, setNiftyStocks] = useState([]);
     const [bankNiftyStocks, setBankNiftyStocks] = useState([]);
@@ -77,14 +77,34 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
     const [niftyError, setNiftyError] = useState('');
     const [bankError, setBankError] = useState('');
     const [openPositions, setOpenPositions] = useState([]);
+    const [holdings, setHoldings] = useState([]);
+    const [margins, setMargins] = useState(null);
+    const [marginsError, setMarginsError] = useState('');
     const [niftyBlocked, setNiftyBlocked] = useState(false);
     const [bankBlocked, setBankBlocked] = useState(false);
     const [positionsBlocked, setPositionsBlocked] = useState(false);
+    const [holdingsBlocked, setHoldingsBlocked] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
     const [niftyCategory, setNiftyCategory] = useState('all');
     const [orderSubmittingId, setOrderSubmittingId] = useState(null);
     const [orderSubmittingAction, setOrderSubmittingAction] = useState(null);
+    const [orderModal, setOrderModal] = useState(null);
+    const [orderQuantity, setOrderQuantity] = useState(1);
+    const [orderModalError, setOrderModalError] = useState('');
+    const [orderType, setOrderType] = useState('MARKET');
+    const [orderPrice, setOrderPrice] = useState('');
+    const [orderVariety, setOrderVariety] = useState('regular');
+    const [orderEstimate, setOrderEstimate] = useState(null);
+    const [orderEstimateError, setOrderEstimateError] = useState('');
+    const [livePrice, setLivePrice] = useState(null);
+    const [lastOrderStatus, setLastOrderStatus] = useState(null);
+    const [liveOrders, setLiveOrders] = useState([]);
+    const orderStatusIntervalRef = useRef(null);
+    const formatAmount = (value) => (Number.isFinite(value) ? Number(value).toFixed(2) : '--');
+    const [zerodhaConnected, setZerodhaConnected] = useState(
+        () => localStorage.getItem('zerodha_connected') === 'true'
+    );
 
     // Modal State
     const [selectedStockForChart, setSelectedStockForChart] = useState(null);
@@ -94,9 +114,17 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
     const navigate = useNavigate();
     const location = useLocation();
     const [searchParams, setSearchParams] = useSearchParams();
+    useEffect(() => {
+        setZerodhaConnected(localStorage.getItem('zerodha_connected') === 'true');
+    }, [location.pathname]);
 
     // Function to refresh market data and positions
     const refreshPositions = useCallback(async () => {
+        if (!zerodhaConnected) {
+            setOpenPositions([]);
+            setPositionsBlocked(true);
+            return;
+        }
         if (positionsBlocked) return;
         try {
             const positions = await fetchPositions();
@@ -109,10 +137,71 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                 setPositionsBlocked(true);
             }
         }
-    }, [positionsBlocked]);
+    }, [positionsBlocked, zerodhaConnected]);
+
+    const refreshHoldings = useCallback(async () => {
+        if (!zerodhaConnected) {
+            setHoldings([]);
+            setHoldingsBlocked(true);
+            return;
+        }
+        if (holdingsBlocked) return;
+        try {
+            const data = await fetchHoldings();
+            setHoldings(data);
+            setHoldingsBlocked(false);
+        } catch (error) {
+            console.error("Failed to load holdings", error);
+            setHoldings([]);
+            if (error?.response?.status === 403) {
+                setHoldingsBlocked(true);
+            }
+        }
+    }, [holdingsBlocked, zerodhaConnected]);
+
+    const refreshMargins = useCallback(async () => {
+        if (!zerodhaConnected) {
+            setMargins(null);
+            setMarginsError('Connect Zerodha to view balances.');
+            return;
+        }
+        try {
+            const data = await fetchMargins();
+            setMargins(data);
+            setMarginsError('');
+        } catch (error) {
+            console.error("Failed to load margins", error);
+            setMargins(null);
+            setMarginsError('Unable to load margins. Please connect Zerodha.');
+        }
+    }, [zerodhaConnected]);
+
+    const refreshOrders = useCallback(async () => {
+        try {
+            const data = await fetchOrders();
+            setLiveOrders(Array.isArray(data) ? data : []);
+        } catch (error) {
+            console.error('Failed to load orders', error);
+            setLiveOrders([]);
+        }
+    }, []);
 
     const fetchTableData = useCallback(async (segment) => {
         if (isConnecting) return;
+        if (!zerodhaConnected) {
+            if (segment === 'nifty') {
+                setNiftyStocks([]);
+                setNiftyTotal(0);
+                setNiftyError('Connect Zerodha to load Nifty 50 data.');
+                setNiftyBlocked(true);
+            } else {
+                setBankNiftyStocks([]);
+                setBankTotal(0);
+                setBankError('Connect Zerodha to load Bank Nifty data.');
+                setBankBlocked(true);
+            }
+            return;
+        }
         if (segment === 'nifty' && niftyBlocked) return;
         if (segment === 'banknifty' && bankBlocked) return;
         const query = segment === 'nifty' ? niftyQuery : bankQuery;
@@ -163,7 +252,7 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                 }
             }
         }
-    }, [bankBlocked, bankQuery, niftyBlocked, niftyQuery, selectedScale, isConnecting]);
+    }, [bankBlocked, bankQuery, niftyBlocked, niftyQuery, selectedScale, isConnecting, zerodhaConnected]);
 
     const mergeScales = useCallback((scaleList) => {
         if (!Array.isArray(scaleList)) return;
@@ -235,11 +324,29 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    useEffect(() => {
+        refreshMargins();
+        const interval = setInterval(() => {
+            refreshMargins();
+        }, 30000);
+        return () => clearInterval(interval);
+    }, [refreshMargins]);
+
+    useEffect(() => {
+        refreshOrders();
+        const interval = setInterval(() => {
+            refreshOrders();
+        }, 5000);
+        return () => clearInterval(interval);
+    }, [refreshOrders]);
+
     // 2. Route Synchronization
     useEffect(() => {
         const path = location.pathname;
         if (path.includes('/dashboard/banknifty')) {
             setActiveTab('banknifty');
+        } else if (path.includes('/dashboard/holdings')) {
+            setActiveTab('holdings');
         } else if (path.includes('/dashboard/open-position')) {
             setActiveTab('openposition');
         } else {
@@ -362,6 +469,20 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
         return () => clearInterval(interval);
     }, [activeTab, positionsBlocked, refreshPositions]);
 
+    useEffect(() => {
+        if (activeTab !== 'holdings') {
+            return undefined;
+        }
+        if (holdingsBlocked) {
+            return undefined;
+        }
+        refreshHoldings();
+        const interval = setInterval(() => {
+            refreshHoldings();
+        }, 15000);
+        return () => clearInterval(interval);
+    }, [activeTab, holdingsBlocked, refreshHoldings]);
+
     const dismissNiftyError = () => {
         setNiftyError('');
         setNiftyBlocked(false);
@@ -421,52 +542,180 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
         }
     };
 
-    const buildKiteOrderUrl = (action, symbol, quantity) => {
-        const params = new URLSearchParams({
-            tradingsymbol: symbol,
-            exchange: 'NSE',
-            transaction_type: action,
-            quantity: String(quantity),
-            order_type: 'MARKET',
-            product: 'CNC',
-            validity: 'DAY',
-        });
-        return `https://kite.zerodha.com/order?${params.toString()}`;
+    const openOrderModal = (segment, action, item) => {
+        setOrderModal({ segment, action, item });
+        setOrderQuantity(1);
+        setOrderModalError('');
+        setOrderType('MARKET');
+        setOrderPrice('');
+        setOrderVariety('regular');
+        setOrderEstimate(null);
+        setOrderEstimateError('');
+        setLivePrice(null);
     };
 
-    const handlePlaceOrder = async (segment, action, item) => {
+    const closeOrderModal = () => {
+        setOrderModal(null);
+        setOrderModalError('');
+        setOrderEstimate(null);
+        setOrderEstimateError('');
+        setLivePrice(null);
+    };
+
+    const getOrderSymbol = (item) => (item?.tradingsymbol || item?.symbol || '').trim();
+
+    const fetchLivePrice = useCallback(async (symbol) => {
+        if (!symbol) return;
+        try {
+            const data = await fetchQuote(`NSE:${symbol}`);
+            const quote = data?.[`NSE:${symbol}`];
+            setLivePrice(quote?.last_price ?? null);
+        } catch (error) {
+            console.error('Failed to fetch live price', error);
+            setLivePrice(null);
+        }
+    }, []);
+
+    const estimateOrderMargins = useCallback(async (payload) => {
+        try {
+            const data = await fetchOrderMargins(payload);
+            setOrderEstimate(data || null);
+            setOrderEstimateError('');
+        } catch (error) {
+            console.error('Failed to fetch order margins', error);
+            setOrderEstimate(null);
+            setOrderEstimateError('Unable to estimate margins for this order.');
+        }
+    }, []);
+
+    const stopOrderPolling = useCallback(() => {
+        if (orderStatusIntervalRef.current) {
+            clearInterval(orderStatusIntervalRef.current);
+            orderStatusIntervalRef.current = null;
+        }
+    }, []);
+
+    const pollOrderStatus = useCallback(async (orderId) => {
+        if (!orderId) return;
+        stopOrderPolling();
+        const fetchStatus = async () => {
+            try {
+                const status = await fetchOrderStatus(orderId);
+                setLastOrderStatus(status || null);
+                const state = (status?.status || '').toUpperCase();
+                if (['COMPLETE', 'REJECTED', 'CANCELLED'].includes(state)) {
+                    stopOrderPolling();
+                }
+            } catch (error) {
+                console.error('Failed to fetch order status', error);
+            }
+        };
+        await fetchStatus();
+        orderStatusIntervalRef.current = setInterval(fetchStatus, 5000);
+    }, [stopOrderPolling]);
+
+    const latestLiveOrder = useMemo(() => {
+        if (!Array.isArray(liveOrders) || liveOrders.length === 0) return null;
+        const sorted = [...liveOrders].sort((a, b) => {
+            const aTime = new Date(a.order_timestamp || a.exchange_timestamp || 0).getTime();
+            const bTime = new Date(b.order_timestamp || b.exchange_timestamp || 0).getTime();
+            return bTime - aTime;
+        });
+        return sorted[0] || null;
+    }, [liveOrders]);
+
+    const orderPayload = useMemo(() => {
+        if (!orderModal) return null;
+        const symbol = getOrderSymbol(orderModal.item);
+        const quantity = Number(orderQuantity);
+        if (!symbol || !Number.isInteger(quantity) || quantity <= 0) {
+            return null;
+        }
+        const payload = {
+            tradingsymbol: symbol,
+            quantity,
+            transaction_type: orderModal.action,
+            exchange: 'NSE',
+            order_type: orderType,
+            product: 'CNC',
+            validity: 'DAY',
+            variety: orderVariety,
+        };
+        if (orderType === 'LIMIT') {
+            const price = Number(orderPrice);
+            if (!Number.isFinite(price) || price <= 0) {
+                return null;
+            }
+            payload.price = price;
+        }
+        return payload;
+    }, [orderModal, orderQuantity, orderType, orderPrice, orderVariety]);
+
+    useEffect(() => {
+        if (!orderModal) return;
+        const symbol = getOrderSymbol(orderModal.item);
+        fetchLivePrice(symbol);
+        const interval = setInterval(() => {
+            fetchLivePrice(symbol);
+        }, 5000);
+        return () => clearInterval(interval);
+    }, [fetchLivePrice, orderModal]);
+
+    useEffect(() => {
+        if (!orderPayload) return;
+        estimateOrderMargins(orderPayload);
+    }, [estimateOrderMargins, orderPayload]);
+
+    useEffect(() => {
+        return () => {
+            stopOrderPolling();
+        };
+    }, [stopOrderPolling]);
+
+    const submitOrder = async () => {
+        if (!orderModal) return;
+        const { segment, action, item } = orderModal;
         const symbol = (item?.tradingsymbol || item?.symbol || '').trim();
         if (!symbol) {
-            setSegmentError(segment, 'Missing trading symbol for this stock.');
+            setOrderModalError('Missing trading symbol for this stock.');
             return;
         }
-        const qtyInput = window.prompt(`Enter quantity to ${action.toLowerCase()} ${symbol}`, '1');
-        if (!qtyInput) return;
-        const quantity = Number(qtyInput);
+        const quantity = Number(orderQuantity);
         if (!Number.isInteger(quantity) || quantity <= 0) {
-            setSegmentError(segment, 'Quantity must be a positive integer.');
+            setOrderModalError('Quantity must be a positive integer.');
             return;
+        }
+        if (orderType === 'LIMIT') {
+            const priceValue = Number(orderPrice);
+            if (!Number.isFinite(priceValue) || priceValue <= 0) {
+                setOrderModalError('Limit price must be a positive number.');
+                return;
+            }
         }
         const rowId = item.instrument_token || item.id || symbol;
         setOrderSubmittingId(rowId);
         setOrderSubmittingAction(action);
+        setOrderModalError('');
         try {
-            await placeOrder({
-                tradingsymbol: symbol,
-                quantity,
-                transaction_type: action,
-            });
+            if (!orderPayload) {
+                setOrderModalError('Invalid order payload.');
+                return;
+            }
+            const result = await placeOrder(orderPayload);
+            const orderId = result?.order_id;
+            if (orderId) {
+                setLastOrderStatus({ order_id: orderId, status: 'PENDING' });
+                await pollOrderStatus(orderId);
+            }
             await refreshPositions();
+            await refreshHoldings();
             if (segment === 'nifty' || segment === 'banknifty') {
                 await fetchTableData(segment);
             }
         } catch (error) {
             console.error(`Failed to place ${action} order`, error);
             const message = error?.response?.data?.detail || `Unable to place ${action} order.`;
-            if (message.toLowerCase().includes('after market order')) {
-                window.location.assign(buildKiteOrderUrl(action, symbol, quantity));
-                return;
-            }
+            setOrderModalError(message);
             setSegmentError(segment, message);
         } finally {
             setOrderSubmittingId(null);
@@ -476,6 +725,20 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
 
     const renderStockTable = (segment, data, query, setQuery, total, errorMessage, onDismissError) => (
         <div className="stock-table-container card">
+            {!zerodhaConnected ? (
+                <div className="empty-state">
+                    <p>Connect Zerodha to load live market data and trade.</p>
+                    <button
+                        type="button"
+                        className="btn btn-sm btn-primary"
+                        onClick={() => handleConnectZerodha(segment)}
+                        disabled={isConnecting}
+                    >
+                        {isConnecting ? 'Connecting...' : 'Connect Zerodha'}
+                    </button>
+                </div>
+            ) : (
+                <>
             <div className="table-toolbar">
                 <div className="table-search">
                     <label className="text-secondary text-sm">Filter</label>
@@ -588,9 +851,6 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                                     <td>{item.id || item.instrument_token}</td>
                                     <td className="font-bold">
                                         <div>{item.name || item.tradingsymbol}</div>
-                                        {item.name && (
-                                            <div className="text-secondary text-sm">Zerodha Name: {item.name}</div>
-                                        )}
                                         {symbolUrl && (
                                             <a className="text-secondary text-sm" href={symbolUrl} target="_blank" rel="noreferrer">
                                                 {symbol}
@@ -617,14 +877,14 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                                         <div className="flex gap-2 justify-end">
                                             <button
                                                 className="btn btn-sm btn-primary"
-                                                onClick={() => handlePlaceOrder(segment, 'BUY', item)}
+                                                onClick={() => openOrderModal(segment, 'BUY', item)}
                                                 disabled={isSubmitting}
                                             >
                                                 {isSubmitting && orderSubmittingAction === 'BUY' ? 'Buying...' : 'Buy'}
                                             </button>
                                             <button
                                                 className="btn btn-sm btn-danger-outline"
-                                                onClick={() => handlePlaceOrder(segment, 'SELL', item)}
+                                                onClick={() => openOrderModal(segment, 'SELL', item)}
                                                 disabled={isSubmitting}
                                             >
                                                 {isSubmitting && orderSubmittingAction === 'SELL' ? 'Selling...' : 'Sell'}
@@ -668,6 +928,8 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                     </select>
                 </div>
             </div>
+                </>
+            )}
         </div>
     );
 
@@ -693,6 +955,12 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                         onClick={() => handleTabClick('openposition', '/dashboard/open-position')}
                     >
                         📈 Open Position
+                    </button>
+                    <button
+                        className={`instrument-tab ${activeTab === 'holdings' ? 'active' : ''}`}
+                        onClick={() => handleTabClick('holdings', '/dashboard/holdings')}
+                    >
+                        Holdings
                     </button>
                 </div>
             </div>
@@ -762,18 +1030,20 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                         <div className="section-header">
                             <h2>Nifty 50 Constituents</h2>
                         </div>
-                        <div className="card flex flex-wrap gap-2 items-center">
-                            {niftyCategories.map((category) => (
-                                <button
-                                    key={category.id}
-                                    type="button"
-                                    className={`btn btn-sm ${niftyCategory === category.id ? 'btn-primary' : 'btn-outline'}`}
-                                    onClick={() => setNiftyCategory(category.id)}
-                                >
-                                    {category.label}
-                                </button>
-                            ))}
-                        </div>
+                        {zerodhaConnected && (
+                            <div className="card flex flex-wrap gap-2 items-center">
+                                {niftyCategories.map((category) => (
+                                    <button
+                                        key={category.id}
+                                        type="button"
+                                        className={`btn btn-sm ${niftyCategory === category.id ? 'btn-primary' : 'btn-outline'}`}
+                                        onClick={() => setNiftyCategory(category.id)}
+                                    >
+                                        {category.label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                         {renderStockTable(
                             'nifty',
                             niftyStocks,
@@ -841,8 +1111,162 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                         </div>
                     </div>
                 )}
+
+                {activeTab === 'holdings' && (
+                    <div className="open-positions-section card">
+                        <div className="card-header">
+                            <Briefcase size={24} className="card-icon" />
+                            <h3 className="card-title">Holdings</h3>
+                        </div>
+                        <div className="card" style={{ marginBottom: '1rem' }}>
+                            <div className="card-header">
+                                <Briefcase size={20} className="card-icon" />
+                                <h3 className="card-title">Account Summary</h3>
+                            </div>
+                            {marginsError && <p className="text-danger text-sm">{marginsError}</p>}
+                            <div className="flex flex-wrap gap-6">
+                                <div>
+                                    <p className="text-secondary text-sm">Available Cash</p>
+                                    <strong>{formatAmount(margins?.equity?.available?.cash ?? margins?.equity?.available?.live_balance)}</strong>
+                                </div>
+                                <div>
+                                    <p className="text-secondary text-sm">Utilised</p>
+                                    <strong>{formatAmount(margins?.equity?.utilised?.debits ?? margins?.equity?.utilised?.span)}</strong>
+                                </div>
+                                <div>
+                                    <p className="text-secondary text-sm">Net</p>
+                                    <strong>{formatAmount(margins?.equity?.net)}</strong>
+                                </div>
+                                <div>
+                                    <p className="text-secondary text-sm">Order Margin (Latest)</p>
+                                    <strong>{formatAmount(orderEstimate?.total)}</strong>
+                                </div>
+                                <div>
+                                    <p className="text-secondary text-sm">Estimated Charges</p>
+                                    <strong>{formatAmount(orderEstimate?.charges?.total)}</strong>
+                                </div>
+                                <div>
+                                    <p className="text-secondary text-sm">Latest Order Status</p>
+                                    <strong>{lastOrderStatus?.status || latestLiveOrder?.status || '--'}</strong>
+                                </div>
+                            </div>
+                            {orderEstimateError && <p className="text-danger text-sm">{orderEstimateError}</p>}
+                            {lastOrderStatus?.order_id && (
+                                <p className="text-secondary text-sm">Order ID: {lastOrderStatus.order_id}</p>
+                            )}
+                            {!lastOrderStatus?.order_id && latestLiveOrder?.order_id && (
+                                <p className="text-secondary text-sm">Order ID: {latestLiveOrder.order_id}</p>
+                            )}
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="enhanced-table">
+                                <thead>
+                                    <tr>
+                                        <th>Instrument</th>
+                                        <th>Qty</th>
+                                        <th>Avg Price</th>
+                                        <th>LTP</th>
+                                        <th>P&L</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {holdings.map((holding) => (
+                                        <tr key={holding.id || holding.instrument}>
+                                            <td><strong>{holding.instrument}</strong></td>
+                                            <td>{holding.qty}</td>
+                                            <td>{Number(holding.avgPrice || 0).toFixed(2)}</td>
+                                            <td>{Number(holding.ltp || 0).toFixed(2)}</td>
+                                            <td>
+                                                <span className={holding.pnl >= 0 ? 'text-success' : 'text-danger'}>
+                                                    {holding.pnl >= 0 ? '+' : ''}{Number(holding.pnl || 0).toFixed(2)}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
             </div>
 
+            {orderModal && (
+                <div className="modal-overlay">
+                    <div className="modal-content card" style={{ width: 'min(520px, 92vw)' }}>
+                        <div className="modal-header">
+                            <h2>{orderModal.action} {orderModal?.item?.tradingsymbol || orderModal?.item?.symbol || ''}</h2>
+                            <p className="modal-subtitle">Review order details and confirm.</p>
+                        </div>
+                        <div className="modal-body">
+                            <div className="flex flex-wrap gap-4">
+                                <div style={{ minWidth: '140px' }}>
+                                    <label className="text-secondary text-sm">Quantity</label>
+                                    <input
+                                        className="input"
+                                        type="number"
+                                        min="1"
+                                        step="1"
+                                        value={orderQuantity}
+                                        onChange={(e) => setOrderQuantity(e.target.value)}
+                                    />
+                                </div>
+                                <div style={{ minWidth: '140px' }}>
+                                    <label className="text-secondary text-sm">Order Type</label>
+                                    <select
+                                        className="input"
+                                        value={orderType}
+                                        onChange={(e) => setOrderType(e.target.value)}
+                                    >
+                                        <option value="MARKET">Market</option>
+                                        <option value="LIMIT">Limit</option>
+                                    </select>
+                                </div>
+                                <div style={{ minWidth: '140px' }}>
+                                    <label className="text-secondary text-sm">Variety</label>
+                                    <select
+                                        className="input"
+                                        value={orderVariety}
+                                        onChange={(e) => setOrderVariety(e.target.value)}
+                                    >
+                                        <option value="regular">Regular</option>
+                                        <option value="amo">AMO</option>
+                                    </select>
+                                </div>
+                                {orderType === 'LIMIT' && (
+                                    <div style={{ minWidth: '140px' }}>
+                                        <label className="text-secondary text-sm">Limit Price</label>
+                                        <input
+                                            className="input"
+                                            type="number"
+                                            min="0"
+                                            step="0.05"
+                                            value={orderPrice}
+                                            onChange={(e) => setOrderPrice(e.target.value)}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                            <div className="text-secondary text-sm" style={{ marginTop: '0.5rem' }}>
+                                Live Price: {livePrice !== null ? formatAmount(livePrice) : '--'}
+                            </div>
+                            {orderModalError && <p className="text-danger text-sm">{orderModalError}</p>}
+                        </div>
+                        <div className="flex gap-2 justify-end">
+                            <button type="button" className="btn btn-outline" onClick={closeOrderModal}>
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                className="btn btn-primary"
+                                onClick={submitOrder}
+                                disabled={orderSubmittingId !== null || !orderPayload || (orderType === 'LIMIT' && !orderPrice)}
+                            >
+                                {orderSubmittingAction === orderModal.action ? 'Placing...' : 'Confirm Order'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Modal for Detailed Chart */}
             {

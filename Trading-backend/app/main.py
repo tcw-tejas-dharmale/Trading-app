@@ -39,7 +39,7 @@ else:
     )
 
 app.include_router(auth.router, prefix=f"{settings.API_V1_STR}", tags=["login"])
-app.include_router(market.router, prefix=f"{settings.API_V1_STR}/market", tags=["market"])
+app.include_router(market.router, prefix=f"{settings.API_V1_STR}/market")
 
 @app.get("/")
 def root():

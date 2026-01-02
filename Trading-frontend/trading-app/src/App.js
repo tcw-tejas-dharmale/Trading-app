@@ -42,7 +42,7 @@ function App() {
                 path="/dashboard/*"
                 element={
                   <ProtectedRoute>
-                    <Dashboard selectedInstrument={selectedInstrument} />
+                    <Dashboard />
                   </ProtectedRoute>
                 }
               />

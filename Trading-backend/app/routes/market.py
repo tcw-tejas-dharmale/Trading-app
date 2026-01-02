@@ -80,7 +80,7 @@ def apply_rate_limit(user_id: Optional[str]) -> None:
     key = f"user:{user_id}" if user_id else "anonymous"
     rate_limiter.check(key)
 
-@router.get("/instruments")
+@router.get("/instruments", tags=["Market Data"])
 async def get_instruments(
     db: Any = Depends(database.get_db),
     current_user: Optional[str] = Security(get_current_user_optional)
@@ -91,7 +91,7 @@ async def get_instruments(
     apply_rate_limit(current_user)
     return await market_controller.get_instruments(db)
 
-@router.get("/nse-universe/zerodha")
+@router.get("/nse-universe/zerodha", tags=["Market Data"])
 async def get_nse_universe_zerodha(
     current_user: Optional[str] = Security(get_current_user_optional)
 ):
@@ -101,21 +101,21 @@ async def get_nse_universe_zerodha(
     apply_rate_limit(current_user)
     return await market_controller.get_nse_universe_zerodha()
 
-@router.get("/scales")
+@router.get("/scales", tags=["Market Data"])
 def get_scales(current_user: Optional[str] = Security(get_current_user_optional)):
     """
     Get available time scales. Authentication is optional.
     """
     return []
 
-@router.get("/strategies")
+@router.get("/strategies", tags=["Market Data"])
 def get_strategies(current_user: Optional[str] = Security(get_current_user_optional)):
     """
     Get available strategies. Authentication is optional.
     """
     return []
 
-@router.get("/historical-data")
+@router.get("/historical-data", tags=["Market Data"])
 async def get_historical_data(
     instrument_token: int,
     scale: str = "5m",
@@ -134,7 +134,7 @@ async def get_historical_data(
         to_date=end
     )
 
-@router.get("/nifty-50")
+@router.get("/nifty-50", tags=["Market Data"])
 async def get_nifty_50(
     db: Any = Depends(database.get_db),
     scale: str = "5m",
@@ -165,7 +165,7 @@ async def get_nifty_50(
         include_candles=include_candles,
     )
 
-@router.get("/bank-nifty")
+@router.get("/bank-nifty", tags=["Market Data"])
 async def get_bank_nifty(
     db: Any = Depends(database.get_db),
     scale: str = "5m",
@@ -194,7 +194,7 @@ async def get_bank_nifty(
         include_candles=include_candles,
     )
 
-@router.get("/positions")
+@router.get("/positions", tags=["Portfolio"])
 async def get_positions(
     current_user: str = Security(get_current_user)
 ):
@@ -204,14 +204,78 @@ async def get_positions(
     apply_rate_limit(current_user)
     return await market_controller.get_positions()
 
-@router.get("/zerodha/login-url")
+@router.get("/holdings", tags=["Portfolio"])
+async def get_holdings(
+    current_user: str = Security(get_current_user)
+):
+    """
+    Get Holdings.
+    """
+    apply_rate_limit(current_user)
+    return await market_controller.get_holdings()
+
+@router.get("/margins", tags=["Portfolio"])
+def get_margins(
+    current_user: str = Security(get_current_user)
+):
+    """
+    Get account margins and available balance.
+    """
+    apply_rate_limit(current_user)
+    return market_controller.get_margins()
+
+@router.get("/quote", tags=["Market Data"])
+def get_quote(
+    symbols: str,
+    current_user: str = Security(get_current_user)
+):
+    """
+    Get live quotes for comma-separated symbols (e.g. NSE:SBIN,NSE:INFY).
+    """
+    apply_rate_limit(current_user)
+    symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
+    return market_controller.get_quote(symbol_list)
+
+@router.get("/orders", tags=["Orders"])
+def get_orders(
+    current_user: str = Security(get_current_user)
+):
+    """
+    Get recent orders.
+    """
+    apply_rate_limit(current_user)
+    return market_controller.get_orders()
+
+@router.get("/orders/{order_id}", tags=["Orders"])
+def get_order_status(
+    order_id: str,
+    current_user: str = Security(get_current_user)
+):
+    """
+    Get latest status for an order.
+    """
+    apply_rate_limit(current_user)
+    return market_controller.get_order_status(order_id)
+
+@router.post("/order-margins", tags=["Orders"])
+def get_order_margins(
+    order: OrderRequest,
+    current_user: str = Security(get_current_user)
+):
+    """
+    Estimate order margin requirements and charges.
+    """
+    apply_rate_limit(current_user)
+    return market_controller.get_order_margins(order.dict())
+
+@router.get("/zerodha/login-url", tags=["Zerodha"])
 def get_zerodha_login_url(
     current_user: Optional[str] = Security(get_current_user_optional)
 ):
     apply_rate_limit(current_user)
     return {"login_url": market_controller.get_login_url()}
 
-@router.post("/zerodha/login-url")
+@router.post("/zerodha/login-url", tags=["Zerodha"])
 def get_zerodha_login_url_post(
     _payload: Optional[dict] = Body(default=None),
     current_user: Optional[str] = Security(get_current_user_optional)
@@ -219,7 +283,7 @@ def get_zerodha_login_url_post(
     apply_rate_limit(current_user)
     return {"login_url": market_controller.get_login_url()}
 
-@router.post("/zerodha/session")
+@router.post("/zerodha/session", tags=["Zerodha"])
 def create_zerodha_session(
     request_token: str,
     current_user: Optional[str] = Security(get_current_user_optional)
@@ -227,7 +291,7 @@ def create_zerodha_session(
     apply_rate_limit(current_user)
     return market_controller.create_session(request_token)
 
-@router.post("/orders")
+@router.post("/orders", tags=["Orders"])
 def place_order(
     order: OrderRequest,
     current_user: str = Security(get_current_user)
@@ -235,7 +299,7 @@ def place_order(
     apply_rate_limit(current_user)
     return market_controller.place_order(order.dict())
 
-@router.post("/sync-instruments")
+@router.post("/sync-instruments", tags=["Zerodha"])
 async def sync_instruments(
     db: Any = Depends(database.get_db),
     current_user: Optional[str] = Security(get_current_user_optional)

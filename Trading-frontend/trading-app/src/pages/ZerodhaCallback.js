@@ -27,6 +27,7 @@ const ZerodhaCallback = () => {
     const connect = async () => {
       try {
         await createZerodhaSession(requestToken);
+        localStorage.setItem('zerodha_connected', 'true');
         setStatus('Zerodha connected. Redirecting to dashboard...');
         setTimeout(() => navigate('/dashboard/nifty50'), 1200);
       } catch (err) {

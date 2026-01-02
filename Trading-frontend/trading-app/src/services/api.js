@@ -153,6 +153,49 @@ export const fetchPositions = async () => {
   return response.data;
 };
 
+export const fetchHoldings = async () => {
+  const response = await api.get('/market/holdings', {
+    headers: getAuthHeaders(),
+  });
+  return response.data;
+};
+
+export const fetchMargins = async () => {
+  const response = await api.get('/market/margins', {
+    headers: getAuthHeaders(),
+  });
+  return response.data;
+};
+
+export const fetchQuote = async (symbols) => {
+  const response = await api.get('/market/quote', {
+    params: { symbols },
+    headers: getAuthHeaders(),
+  });
+  return response.data;
+};
+
+export const fetchOrders = async () => {
+  const response = await api.get('/market/orders', {
+    headers: getAuthHeaders(),
+  });
+  return response.data;
+};
+
+export const fetchOrderStatus = async (orderId) => {
+  const response = await api.get(`/market/orders/${orderId}`, {
+    headers: getAuthHeaders(),
+  });
+  return response.data;
+};
+
+export const fetchOrderMargins = async (payload) => {
+  const response = await api.post('/market/order-margins', payload, {
+    headers: getAuthHeaders(),
+  });
+  return response.data;
+};
+
 export const placeOrder = async (payload) => {
   const response = await api.post('/market/orders', payload, {
     headers: getAuthHeaders(),

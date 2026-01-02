@@ -2,9 +2,9 @@ import React from 'react';
 import EnhancedDashboard from './EnhancedDashboard';
 import './Dashboard.css';
 
-const Dashboard = ({ selectedInstrument }) => {
+const Dashboard = () => {
     // Use Enhanced Dashboard for comprehensive financial analysis
-    return <EnhancedDashboard selectedInstrument={selectedInstrument} />;
+    return <EnhancedDashboard />;
 };
 
 export default Dashboard;
