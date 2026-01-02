@@ -153,6 +153,13 @@ export const fetchPositions = async () => {
   return response.data;
 };
 
+export const placeOrder = async (payload) => {
+  const response = await api.post('/market/orders', payload, {
+    headers: getAuthHeaders(),
+  });
+  return response.data;
+};
+
 export const syncInstruments = async () => {
   const response = await api.post('/market/sync-instruments', null, {
     headers: getAuthHeaders(),

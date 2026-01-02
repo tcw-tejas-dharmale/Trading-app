@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Security, Request
+from fastapi import APIRouter, Depends, HTTPException, Security, Request, Body
 from typing import Optional, Any
+from pydantic import BaseModel, Field, validator
 from app.core import database
 from app.controllers.market_data_controller import market_controller
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -10,6 +11,39 @@ from app.utils.rate_limiter import SimpleRateLimiter
 router = APIRouter()
 http_bearer = HTTPBearer(auto_error=False)
 rate_limiter = SimpleRateLimiter(limit=60, window_seconds=60)
+
+
+class OrderRequest(BaseModel):
+    tradingsymbol: str
+    quantity: int = Field(..., gt=0)
+    transaction_type: str
+    exchange: str = "NSE"
+    order_type: str = "MARKET"
+    product: str = "CNC"
+    validity: str = "DAY"
+    price: Optional[float] = None
+    trigger_price: Optional[float] = None
+    variety: str = "regular"
+
+    @validator(
+        "tradingsymbol",
+        "transaction_type",
+        "exchange",
+        "order_type",
+        "product",
+        "validity",
+        pre=True,
+    )
+    def _normalize_upper(cls, value):
+        if value is None:
+            return value
+        return str(value).strip().upper()
+
+    @validator("variety", pre=True)
+    def _normalize_variety(cls, value):
+        if value is None:
+            return "regular"
+        return str(value).strip().lower()
 
 def get_current_user_optional(credentials: Optional[HTTPAuthorizationCredentials] = Security(http_bearer)):
     """
@@ -57,6 +91,16 @@ async def get_instruments(
     apply_rate_limit(current_user)
     return await market_controller.get_instruments(db)
 
+@router.get("/nse-universe/zerodha")
+async def get_nse_universe_zerodha(
+    current_user: Optional[str] = Security(get_current_user_optional)
+):
+    """
+    Check NSE universe list against Zerodha NSE equity instruments.
+    """
+    apply_rate_limit(current_user)
+    return await market_controller.get_nse_universe_zerodha()
+
 @router.get("/scales")
 def get_scales(current_user: Optional[str] = Security(get_current_user_optional)):
     """
@@ -95,10 +139,13 @@ async def get_nifty_50(
     db: Any = Depends(database.get_db),
     scale: str = "5m",
     search: Optional[str] = None,
+    position: Optional[str] = None,
+    category: Optional[str] = None,
     sort_by: str = "name",
     sort_dir: str = "asc",
     page: int = 1,
     page_size: int = 10,
+    include_candles: bool = False,
     current_user: str = Security(get_current_user)
 ):
     """
@@ -109,10 +156,13 @@ async def get_nifty_50(
         db=db,
         scale=scale,
         search=search,
+        position=position,
+        category=category,
         sort_by=sort_by,
         sort_dir=sort_dir,
         page=page,
         page_size=page_size,
+        include_candles=include_candles,
     )
 
 @router.get("/bank-nifty")
@@ -120,10 +170,12 @@ async def get_bank_nifty(
     db: Any = Depends(database.get_db),
     scale: str = "5m",
     search: Optional[str] = None,
+    position: Optional[str] = None,
     sort_by: str = "name",
     sort_dir: str = "asc",
     page: int = 1,
     page_size: int = 10,
+    include_candles: bool = False,
     current_user: str = Security(get_current_user)
 ):
     """
@@ -134,10 +186,12 @@ async def get_bank_nifty(
         db=db,
         scale=scale,
         search=search,
+        position=position,
         sort_by=sort_by,
         sort_dir=sort_dir,
         page=page,
         page_size=page_size,
+        include_candles=include_candles,
     )
 
 @router.get("/positions")
@@ -152,7 +206,15 @@ async def get_positions(
 
 @router.get("/zerodha/login-url")
 def get_zerodha_login_url(
-    current_user: str = Security(get_current_user)
+    current_user: Optional[str] = Security(get_current_user_optional)
+):
+    apply_rate_limit(current_user)
+    return {"login_url": market_controller.get_login_url()}
+
+@router.post("/zerodha/login-url")
+def get_zerodha_login_url_post(
+    _payload: Optional[dict] = Body(default=None),
+    current_user: Optional[str] = Security(get_current_user_optional)
 ):
     apply_rate_limit(current_user)
     return {"login_url": market_controller.get_login_url()}
@@ -160,10 +222,18 @@ def get_zerodha_login_url(
 @router.post("/zerodha/session")
 def create_zerodha_session(
     request_token: str,
-    current_user: str = Security(get_current_user)
+    current_user: Optional[str] = Security(get_current_user_optional)
 ):
     apply_rate_limit(current_user)
     return market_controller.create_session(request_token)
+
+@router.post("/orders")
+def place_order(
+    order: OrderRequest,
+    current_user: str = Security(get_current_user)
+):
+    apply_rate_limit(current_user)
+    return market_controller.place_order(order.dict())
 
 @router.post("/sync-instruments")
 async def sync_instruments(

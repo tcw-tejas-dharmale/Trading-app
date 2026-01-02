@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { fetchScales, fetchStrategies, fetchNiftyStocks, fetchBankNiftyStocks, fetchPositions, fetchHistoricalData, fetchZerodhaLoginUrl, syncInstruments } from '../services/api';
+import { fetchScales, fetchStrategies, fetchNiftyStocks, fetchBankNiftyStocks, fetchPositions, fetchHistoricalData, fetchZerodhaLoginUrl, syncInstruments, placeOrder } from '../services/api';
 import CandlestickChart from './CandlestickChart';
 import { Clock, Sliders, Search, Briefcase, X } from 'lucide-react';
 import './EnhancedDashboard.css';
@@ -58,7 +58,7 @@ const MiniCandleChart = ({ candles }) => {
 };
 
 const EnhancedDashboard = ({ selectedInstrument }) => {
-    const excludedScales = new Set(['4h']);
+    const excludedScales = useMemo(() => new Set(['4h']), []);
     const preferredScales = ['1m', '5m', '15m', '30m', '1h', '1d', '2d', '1M'];
     const [scales, setScales] = useState(preferredScales);
     const [strategies, setStrategies] = useState([]);
@@ -70,8 +70,8 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
 
     const [niftyStocks, setNiftyStocks] = useState([]);
     const [bankNiftyStocks, setBankNiftyStocks] = useState([]);
-    const [niftyQuery, setNiftyQuery] = useState({ page: 1, pageSize: 10, search: '', sortBy: 'name', sortDir: 'asc' });
-    const [bankQuery, setBankQuery] = useState({ page: 1, pageSize: 10, search: '', sortBy: 'name', sortDir: 'asc' });
+    const [niftyQuery, setNiftyQuery] = useState({ page: 1, pageSize: 10, search: '', sortBy: 'name', sortDir: 'asc', position: '', category: '' });
+    const [bankQuery, setBankQuery] = useState({ page: 1, pageSize: 10, search: '', sortBy: 'name', sortDir: 'asc', position: '' });
     const [niftyTotal, setNiftyTotal] = useState(0);
     const [bankTotal, setBankTotal] = useState(0);
     const [niftyError, setNiftyError] = useState('');
@@ -82,6 +82,9 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
     const [positionsBlocked, setPositionsBlocked] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
+    const [niftyCategory, setNiftyCategory] = useState('all');
+    const [orderSubmittingId, setOrderSubmittingId] = useState(null);
+    const [orderSubmittingAction, setOrderSubmittingAction] = useState(null);
 
     // Modal State
     const [selectedStockForChart, setSelectedStockForChart] = useState(null);
@@ -93,7 +96,7 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
     const [searchParams, setSearchParams] = useSearchParams();
 
     // Function to refresh market data and positions
-    const refreshPositions = async () => {
+    const refreshPositions = useCallback(async () => {
         if (positionsBlocked) return;
         try {
             const positions = await fetchPositions();
@@ -106,9 +109,10 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                 setPositionsBlocked(true);
             }
         }
-    };
+    }, [positionsBlocked]);
 
     const fetchTableData = useCallback(async (segment) => {
+        if (isConnecting) return;
         if (segment === 'nifty' && niftyBlocked) return;
         if (segment === 'banknifty' && bankBlocked) return;
         const query = segment === 'nifty' ? niftyQuery : bankQuery;
@@ -119,7 +123,12 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
             sort_dir: query.sortDir,
             page: query.page,
             page_size: query.pageSize,
+            position: query.position || undefined,
+            include_candles: true,
         };
+        if (segment === 'nifty' && query.category) {
+            params.category = query.category;
+        }
 
         try {
             if (segment === 'nifty') {
@@ -154,7 +163,7 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                 }
             }
         }
-    }, [bankBlocked, bankQuery, niftyBlocked, niftyQuery, selectedScale]);
+    }, [bankBlocked, bankQuery, niftyBlocked, niftyQuery, selectedScale, isConnecting]);
 
     const mergeScales = useCallback((scaleList) => {
         if (!Array.isArray(scaleList)) return;
@@ -300,8 +309,31 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
         }
     }, [activeTab, fetchTableData, bankBlocked, niftyBlocked]);
 
+    const niftyCategories = [
+        { id: 'all', label: 'Show All' },
+        { id: 'it', label: 'IT' },
+        { id: 'banks', label: 'Banks' },
+        { id: 'healthcare', label: 'Healthcare' },
+        { id: 'energy', label: 'Energy' },
+        { id: 'fmcg', label: 'FMCG' },
+        { id: 'auto', label: 'Auto' },
+        { id: 'infra', label: 'Infra/Capital Goods' },
+        { id: 'financials', label: 'Financial Services' },
+        { id: 'metals', label: 'Metals/Mining' },
+        { id: 'cement', label: 'Cement/Building' },
+        { id: 'retail', label: 'Retail/Consumer' },
+        { id: 'logistics', label: 'Logistics/Travel' },
+        { id: 'food', label: 'Food/QSR' },
+        { id: 'chemicals', label: 'Chemicals' },
+        { id: 'telecom', label: 'Telecom/Exchange' },
+        { id: 'realestate', label: 'Real Estate' },
+    ];
+
     useEffect(() => {
         if (activeTab !== 'nifty' && activeTab !== 'banknifty') {
+            return undefined;
+        }
+        if (isConnecting) {
             return undefined;
         }
         if (activeTab === 'nifty' && niftyBlocked) {
@@ -314,7 +346,7 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
             fetchTableData(activeTab);
         }, 15000);
         return () => clearInterval(interval);
-    }, [activeTab, bankBlocked, fetchTableData, niftyBlocked]);
+    }, [activeTab, bankBlocked, fetchTableData, niftyBlocked, isConnecting]);
 
     useEffect(() => {
         if (activeTab !== 'openposition') {
@@ -328,7 +360,7 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
             refreshPositions();
         }, 15000);
         return () => clearInterval(interval);
-    }, [activeTab, positionsBlocked]);
+    }, [activeTab, positionsBlocked, refreshPositions]);
 
     const dismissNiftyError = () => {
         setNiftyError('');
@@ -341,6 +373,14 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
         setBankBlocked(false);
         fetchTableData('banknifty');
     };
+
+    useEffect(() => {
+        setNiftyQuery((prev) => ({
+            ...prev,
+            page: 1,
+            category: niftyCategory === 'all' ? '' : niftyCategory,
+        }));
+    }, [niftyCategory]);
 
     const setSegmentError = (segment, message) => {
         if (segment === 'banknifty') {
@@ -381,6 +421,59 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
         }
     };
 
+    const buildKiteOrderUrl = (action, symbol, quantity) => {
+        const params = new URLSearchParams({
+            tradingsymbol: symbol,
+            exchange: 'NSE',
+            transaction_type: action,
+            quantity: String(quantity),
+            order_type: 'MARKET',
+            product: 'CNC',
+            validity: 'DAY',
+        });
+        return `https://kite.zerodha.com/order?${params.toString()}`;
+    };
+
+    const handlePlaceOrder = async (segment, action, item) => {
+        const symbol = (item?.tradingsymbol || item?.symbol || '').trim();
+        if (!symbol) {
+            setSegmentError(segment, 'Missing trading symbol for this stock.');
+            return;
+        }
+        const qtyInput = window.prompt(`Enter quantity to ${action.toLowerCase()} ${symbol}`, '1');
+        if (!qtyInput) return;
+        const quantity = Number(qtyInput);
+        if (!Number.isInteger(quantity) || quantity <= 0) {
+            setSegmentError(segment, 'Quantity must be a positive integer.');
+            return;
+        }
+        const rowId = item.instrument_token || item.id || symbol;
+        setOrderSubmittingId(rowId);
+        setOrderSubmittingAction(action);
+        try {
+            await placeOrder({
+                tradingsymbol: symbol,
+                quantity,
+                transaction_type: action,
+            });
+            await refreshPositions();
+            if (segment === 'nifty' || segment === 'banknifty') {
+                await fetchTableData(segment);
+            }
+        } catch (error) {
+            console.error(`Failed to place ${action} order`, error);
+            const message = error?.response?.data?.detail || `Unable to place ${action} order.`;
+            if (message.toLowerCase().includes('after market order')) {
+                window.location.assign(buildKiteOrderUrl(action, symbol, quantity));
+                return;
+            }
+            setSegmentError(segment, message);
+        } finally {
+            setOrderSubmittingId(null);
+            setOrderSubmittingAction(null);
+        }
+    };
+
     const renderStockTable = (segment, data, query, setQuery, total, errorMessage, onDismissError) => (
         <div className="stock-table-container card">
             <div className="table-toolbar">
@@ -392,6 +485,20 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                         value={query.search}
                         onChange={(e) => setQuery((prev) => ({ ...prev, search: e.target.value, page: 1 }))}
                     />
+                </div>
+                <div className="table-sort">
+                    <label className="text-secondary text-sm">Position</label>
+                    <select
+                        className="input"
+                        value={query.position}
+                        onChange={(e) => setQuery((prev) => ({ ...prev, position: e.target.value, page: 1 }))}
+                    >
+                        <option value="">All</option>
+                        <option value="Open">Open (Long/Short)</option>
+                        <option value="Long">Long</option>
+                        <option value="Short">Short</option>
+                        <option value="Neutral">Neutral</option>
+                    </select>
                 </div>
                 <div className="table-sort">
                     <label className="text-secondary text-sm">Sort by</label>
@@ -472,10 +579,24 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                         )}
                         {data.map((item) => {
                             const position = item.position || 'Neutral';
+                            const symbol = item.tradingsymbol || item.symbol || '';
+                            const symbolUrl = symbol ? `https://www.nseindia.com/get-quotes/equity?symbol=${encodeURIComponent(symbol)}` : '';
+                            const rowId = item.instrument_token || item.id || symbol;
+                            const isSubmitting = orderSubmittingId === rowId;
                             return (
                                 <tr key={item.instrument_token || item.id} className="stock-row">
                                     <td>{item.id || item.instrument_token}</td>
-                                    <td className="font-bold">{item.name || item.tradingsymbol}</td>
+                                    <td className="font-bold">
+                                        <div>{item.name || item.tradingsymbol}</div>
+                                        {item.name && (
+                                            <div className="text-secondary text-sm">Zerodha Name: {item.name}</div>
+                                        )}
+                                        {symbolUrl && (
+                                            <a className="text-secondary text-sm" href={symbolUrl} target="_blank" rel="noreferrer">
+                                                {symbol}
+                                            </a>
+                                        )}
+                                    </td>
                                     <td
                                         className="mini-chart-cell cursor-pointer"
                                         onClick={() => handleStockClick(item)}
@@ -494,9 +615,20 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                                     </td>
                                     <td className="text-right">
                                         <div className="flex gap-2 justify-end">
-                                            <button className="btn btn-sm btn-primary">Buy</button>
-                                            <button className="btn btn-sm btn-danger-outline">Sell</button>
-                                            <button className="btn btn-sm btn-outline">Modify</button>
+                                            <button
+                                                className="btn btn-sm btn-primary"
+                                                onClick={() => handlePlaceOrder(segment, 'BUY', item)}
+                                                disabled={isSubmitting}
+                                            >
+                                                {isSubmitting && orderSubmittingAction === 'BUY' ? 'Buying...' : 'Buy'}
+                                            </button>
+                                            <button
+                                                className="btn btn-sm btn-danger-outline"
+                                                onClick={() => handlePlaceOrder(segment, 'SELL', item)}
+                                                disabled={isSubmitting}
+                                            >
+                                                {isSubmitting && orderSubmittingAction === 'SELL' ? 'Selling...' : 'Sell'}
+                                            </button>
                                         </div>
                                     </td>
                                 </tr>
@@ -530,7 +662,7 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                         value={query.pageSize}
                         onChange={(e) => setQuery((prev) => ({ ...prev, pageSize: Number(e.target.value), page: 1 }))}
                     >
-                        {[10, 20, 30, 50].map((size) => (
+                        {[10, 20, 50, 100, 200].map((size) => (
                             <option key={size} value={size}>{size} / page</option>
                         ))}
                     </select>
@@ -566,60 +698,62 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
             </div>
 
             {/* 2. Toolbar */}
-            <div className="toolbar card">
-                <div className="flex flex-wrap gap-6 items-center w-full">
-                    <div className="control-group">
-                        <label className="text-secondary text-sm flex items-center gap-2 mb-2">
-                            <Clock size={16} /> Time Scale
-                        </label>
-                        <div className="flex gap-2 scale-buttons">
-                            {scales.map(scale => (
-                                <button
-                                    key={scale}
-                                    className={`btn text-sm ${selectedScale === scale ? 'btn-primary' : 'btn-outline'}`}
-                                    onClick={() => {
-                                        ensureScalesLoaded();
-                                        setSelectedScale(scale);
-                                    }}
-                                >
-                                    {typeof scale === 'string' && scale.endsWith('d') ? scale.toUpperCase() : scale}
-                                </button>
-                            ))}
+            {(activeTab === 'nifty' || activeTab === 'banknifty') && (
+                <div className="toolbar card">
+                    <div className="flex flex-wrap gap-6 items-center w-full">
+                        <div className="control-group">
+                            <label className="text-secondary text-sm flex items-center gap-2 mb-2">
+                                <Clock size={16} /> Time Scale
+                            </label>
+                            <div className="flex gap-2 scale-buttons">
+                                {scales.map(scale => (
+                                    <button
+                                        key={scale}
+                                        className={`btn text-sm ${selectedScale === scale ? 'btn-primary' : 'btn-outline'}`}
+                                        onClick={() => {
+                                            ensureScalesLoaded();
+                                            setSelectedScale(scale);
+                                        }}
+                                    >
+                                        {typeof scale === 'string' && scale.endsWith('d') ? scale.toUpperCase() : scale}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="spacer"></div>
+
+                        <div className="control-group">
+                            <label className="text-secondary text-sm flex items-center gap-2 mb-2">
+                                <Sliders size={16} /> Strategy
+                            </label>
+                            <select
+                                className="input"
+                                value={selectedStrategy || ''}
+                                onFocus={ensureStrategiesLoaded}
+                                onChange={(e) => setSelectedStrategy(e.target.value)}
+                            >
+                                <option value="" disabled>Select Strategy</option>
+                                {strategies.map(strat => (
+                                    <option key={strat.id} value={strat.id}>{strat.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="control-group">
+                            <label className="text-secondary text-sm flex items-center gap-2 mb-2">
+                                <Search size={16} /> Scan Stocks
+                            </label>
+                            <button
+                                type="button"
+                                className="btn btn-outline scan-stock-btn"
+                                onClick={refreshPositions}
+                            >
+                                Run Scan
+                            </button>
                         </div>
                     </div>
-
-                    <div className="spacer"></div>
-
-                    <div className="control-group">
-                        <label className="text-secondary text-sm flex items-center gap-2 mb-2">
-                            <Sliders size={16} /> Strategy
-                        </label>
-                        <select
-                            className="input"
-                            value={selectedStrategy || ''}
-                            onFocus={ensureStrategiesLoaded}
-                            onChange={(e) => setSelectedStrategy(e.target.value)}
-                        >
-                            <option value="" disabled>Select Strategy</option>
-                            {strategies.map(strat => (
-                                <option key={strat.id} value={strat.id}>{strat.name}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="control-group">
-                        <label className="text-secondary text-sm flex items-center gap-2 mb-2">
-                            <Search size={16} /> Scan Stocks
-                        </label>
-                        <button
-                            type="button"
-                            className="btn btn-outline scan-stock-btn"
-                            onClick={refreshPositions}
-                        >
-                            Run Scan
-                        </button>
-                    </div>
                 </div>
-            </div>
+            )}
 
             {/* 3. Main Content Area */}
             <div className="dashboard-content-area">
@@ -627,6 +761,18 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                     <>
                         <div className="section-header">
                             <h2>Nifty 50 Constituents</h2>
+                        </div>
+                        <div className="card flex flex-wrap gap-2 items-center">
+                            {niftyCategories.map((category) => (
+                                <button
+                                    key={category.id}
+                                    type="button"
+                                    className={`btn btn-sm ${niftyCategory === category.id ? 'btn-primary' : 'btn-outline'}`}
+                                    onClick={() => setNiftyCategory(category.id)}
+                                >
+                                    {category.label}
+                                </button>
+                            ))}
                         </div>
                         {renderStockTable(
                             'nifty',
@@ -746,6 +892,16 @@ const EnhancedDashboard = ({ selectedInstrument }) => {
                     </div>
                 )
             }
+            {isConnecting && (
+                <div className="modal-overlay">
+                    <div className="modal-content card" style={{ width: 'min(520px, 92vw)' }}>
+                        <div className="modal-header">
+                            <h2>Connecting to Zerodha...</h2>
+                            <p className="modal-subtitle">Opening login in a moment.</p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div >
     );
 };

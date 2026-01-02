@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { createZerodhaSession } from '../services/api';
 import './ZerodhaCallback.css';
@@ -8,6 +8,7 @@ const ZerodhaCallback = () => {
   const location = useLocation();
   const [status, setStatus] = useState('Connecting to Zerodha...');
   const [error, setError] = useState('');
+  const hasRequestedRef = useRef(false);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -18,6 +19,10 @@ const ZerodhaCallback = () => {
       setError('Missing request token. Please retry the Zerodha login.');
       return;
     }
+    if (hasRequestedRef.current) {
+      return;
+    }
+    hasRequestedRef.current = true;
 
     const connect = async () => {
       try {
