@@ -1,0 +1,13 @@
+.env
+Trading-backend/.env
+Trading-frontend/trading-app/.env
+Trading-backend/.venv/
+Trading-frontend/trading-app/node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+.pytest_cache/
+.mypy_cache/
+.DS_Store
+Thumbs.db

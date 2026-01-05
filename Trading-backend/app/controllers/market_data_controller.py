@@ -86,7 +86,6 @@ class MarketDataController:
             db.commit()
         finally:
             db.close()
-        self._write_access_token_to_env(token)
 
     def _load_access_token(self) -> Optional[str]:
         token = self._load_access_token_from_db()
