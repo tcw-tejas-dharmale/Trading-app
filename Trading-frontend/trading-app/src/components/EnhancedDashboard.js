@@ -68,8 +68,8 @@ const EnhancedDashboard = () => {
 
     const [niftyStocks, setNiftyStocks] = useState([]);
     const [bankNiftyStocks, setBankNiftyStocks] = useState([]);
-    const [niftyQuery, setNiftyQuery] = useState({ page: 1, pageSize: 10, search: '', sortBy: 'name', sortDir: 'asc', position: '', category: '' });
-    const [bankQuery, setBankQuery] = useState({ page: 1, pageSize: 10, search: '', sortBy: 'name', sortDir: 'asc', position: '' });
+    const [niftyQuery, setNiftyQuery] = useState({ page: 1, pageSize: 10, search: '', position: '', category: '' });
+    const [bankQuery, setBankQuery] = useState({ page: 1, pageSize: 10, search: '', position: '' });
     const [niftyTotal, setNiftyTotal] = useState(0);
     const [bankTotal, setBankTotal] = useState(0);
     const [niftyError, setNiftyError] = useState('');
@@ -257,8 +257,6 @@ const EnhancedDashboard = () => {
         const params = {
             scale: selectedScale,
             search: query.search || undefined,
-            sort_by: query.sortBy,
-            sort_dir: query.sortDir,
             page: query.page,
             page_size: query.pageSize,
             position: query.position || undefined,
@@ -844,34 +842,9 @@ const EnhancedDashboard = () => {
                         onChange={(e) => setQuery((prev) => ({ ...prev, position: e.target.value, page: 1 }))}
                     >
                         <option value="">All</option>
-                        <option value="Open">Open (Long/Short)</option>
                         <option value="Long">Long</option>
                         <option value="Short">Short</option>
                         <option value="Neutral">Neutral</option>
-                    </select>
-                </div>
-                <div className="table-sort">
-                    <label className="text-secondary text-sm">Sort by</label>
-                    <select
-                        className="input"
-                        value={query.sortBy}
-                        onChange={(e) => setQuery((prev) => ({ ...prev, sortBy: e.target.value }))}
-                    >
-                        <option value="name">Company Name</option>
-                        <option value="id">ID</option>
-                        <option value="price">Last Price</option>
-                        <option value="position">Position</option>
-                    </select>
-                </div>
-                <div className="table-sort">
-                    <label className="text-secondary text-sm">Order</label>
-                    <select
-                        className="input"
-                        value={query.sortDir}
-                        onChange={(e) => setQuery((prev) => ({ ...prev, sortDir: e.target.value }))}
-                    >
-                        <option value="asc">Ascending</option>
-                        <option value="desc">Descending</option>
                     </select>
                 </div>
             </div>
