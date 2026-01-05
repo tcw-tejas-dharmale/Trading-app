@@ -127,22 +127,12 @@ def create_user(
     db: Session = Depends(database.get_db),
     user_in: UserCreate,
 ) -> Any:
-    # user = db.query(User).filter(User.email == user_in.email).first()
     user = db.query(User).filter(User.email == user_in.email).first()
     if user:
         raise HTTPException(
             status_code=400,
             detail="The user with this username already exists in the system",
         )
-    
-    # user = User(
-    #     email=user_in.email,
-    #     hashed_password=security.get_password_hash(user_in.password),
-    #     is_active=True,
-    # )
-    # db.add(user)
-    # db.commit()
-    # db.refresh(user)
     
     new_user = User(
         email=user_in.email,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { fetchScales, fetchStrategies, fetchNiftyStocks, fetchBankNiftyStocks, fetchPositions, fetchHoldings, fetchMargins, fetchQuote, fetchOrderMargins, fetchOrderStatus, fetchOrders, fetchHistoricalData, fetchZerodhaLoginUrl, syncInstruments, placeOrder } from '../services/api';
+import { fetchNiftyStocks, fetchBankNiftyStocks, fetchPositions, fetchHoldings, fetchMargins, fetchQuote, fetchOrderMargins, fetchOrderStatus, fetchOrders, fetchHistoricalData, fetchZerodhaLoginUrl, syncInstruments, placeOrder } from '../services/api';
 import CandlestickChart from './CandlestickChart';
 import { Clock, Sliders, Search, Briefcase, X } from 'lucide-react';
 import './EnhancedDashboard.css';
@@ -59,11 +59,8 @@ const MiniCandleChart = ({ candles }) => {
 
 const EnhancedDashboard = () => {
     const excludedScales = useMemo(() => new Set(['4h']), []);
-    const preferredScales = ['1m', '5m', '15m', '30m', '1h', '1d', '2d', '1M'];
-    const [scales, setScales] = useState(preferredScales);
-    const [strategies, setStrategies] = useState([]);
-    const [scalesLoaded, setScalesLoaded] = useState(false);
-    const [strategiesLoaded, setStrategiesLoaded] = useState(false);
+    const preferredScales = useMemo(() => ['1m', '5m', '15m', '30m', '1h', '1d', '2d', '1M'], []);
+    const scales = useMemo(() => preferredScales.filter(scale => !excludedScales.has(scale)), [preferredScales, excludedScales]);
     const [selectedScale, setSelectedScale] = useState('5m');
     const [selectedStrategy, setSelectedStrategy] = useState(null);
     const [activeTab, setActiveTab] = useState('nifty'); // 'nifty', 'banknifty', 'openposition', 'holdings'
@@ -105,6 +102,15 @@ const EnhancedDashboard = () => {
     const [zerodhaConnected, setZerodhaConnected] = useState(
         () => localStorage.getItem('zerodha_connected') === 'true'
     );
+    const [connectModalOpen, setConnectModalOpen] = useState(false);
+    const [connectStatus, setConnectStatus] = useState('idle'); // idle | loading | error
+    const [connectError, setConnectError] = useState('');
+    const connectTimerRef = useRef(null);
+    const [connectionSuccessAnimation, setConnectionSuccessAnimation] = useState({
+        nifty: false,
+        banknifty: false
+    });
+    const prevConnectionStatusRef = useRef(zerodhaConnected);
 
     // Modal State
     const [selectedStockForChart, setSelectedStockForChart] = useState(null);
@@ -114,9 +120,47 @@ const EnhancedDashboard = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const [searchParams, setSearchParams] = useSearchParams();
+    
     useEffect(() => {
-        setZerodhaConnected(localStorage.getItem('zerodha_connected') === 'true');
+        const isConnected = localStorage.getItem('zerodha_connected') === 'true';
+        const wasConnected = prevConnectionStatusRef.current;
+        
+        // Detect when connection becomes active
+        if (!wasConnected && isConnected) {
+            // Trigger animation for both sections since connection affects both
+            setConnectionSuccessAnimation({ nifty: true, banknifty: true });
+            // Remove animation classes after animation completes
+            setTimeout(() => {
+                setConnectionSuccessAnimation({ nifty: false, banknifty: false });
+            }, 2000);
+        }
+        
+        setZerodhaConnected(isConnected);
+        prevConnectionStatusRef.current = isConnected;
     }, [location.pathname]);
+
+    // Also listen for storage changes (in case connection happens in another tab)
+    useEffect(() => {
+        const handleStorageChange = (e) => {
+            if (e.key === 'zerodha_connected') {
+                const isConnected = e.newValue === 'true';
+                const wasConnected = prevConnectionStatusRef.current;
+                
+                if (!wasConnected && isConnected) {
+                    setConnectionSuccessAnimation({ nifty: true, banknifty: true });
+                    setTimeout(() => {
+                        setConnectionSuccessAnimation({ nifty: false, banknifty: false });
+                    }, 2000);
+                }
+                
+                setZerodhaConnected(isConnected);
+                prevConnectionStatusRef.current = isConnected;
+            }
+        };
+        
+        window.addEventListener('storage', handleStorageChange);
+        return () => window.removeEventListener('storage', handleStorageChange);
+    }, []);
 
     // Function to refresh market data and positions
     const refreshPositions = useCallback(async () => {
@@ -177,6 +221,10 @@ const EnhancedDashboard = () => {
     }, [zerodhaConnected]);
 
     const refreshOrders = useCallback(async () => {
+        if (!zerodhaConnected) {
+            setLiveOrders([]);
+            return;
+        }
         try {
             const data = await fetchOrders();
             setLiveOrders(Array.isArray(data) ? data : []);
@@ -184,7 +232,7 @@ const EnhancedDashboard = () => {
             console.error('Failed to load orders', error);
             setLiveOrders([]);
         }
-    }, []);
+    }, [zerodhaConnected]);
 
     const fetchTableData = useCallback(async (segment) => {
         if (isConnecting) return;
@@ -254,73 +302,22 @@ const EnhancedDashboard = () => {
         }
     }, [bankBlocked, bankQuery, niftyBlocked, niftyQuery, selectedScale, isConnecting, zerodhaConnected]);
 
-    const mergeScales = useCallback((scaleList) => {
-        if (!Array.isArray(scaleList)) return;
-        setScales((prev) => {
-            const merged = [...prev];
-            scaleList.forEach((scale) => {
-                if (excludedScales.has(scale)) return;
-                if (!merged.includes(scale)) merged.push(scale);
-            });
-            return merged.filter(scale => !excludedScales.has(scale));
-        });
-    }, [excludedScales]);
-
-    const ensureScalesLoaded = useCallback(async () => {
-        if (scalesLoaded) return;
-        setScalesLoaded(true);
-        try {
-            const scalesData = await fetchScales();
-            mergeScales(scalesData);
-        } catch (error) {
-            console.error("Failed to load scales", error);
-            setScalesLoaded(false);
-        }
-    }, [mergeScales, scalesLoaded]);
-
-    const ensureStrategiesLoaded = useCallback(async () => {
-        if (strategiesLoaded) return;
-        setStrategiesLoaded(true);
-        try {
-            const strategiesData = await fetchStrategies();
-            setStrategies(strategiesData || []);
-        } catch (error) {
-            console.error("Failed to load strategies", error);
-            setStrategiesLoaded(false);
-        }
-    }, [strategiesLoaded]);
 
     // 1. Initialize Options and initial data fetch
     useEffect(() => {
-        const init = async () => {
-            try {
-                const mergedScales = [...preferredScales].filter(scale => !excludedScales.has(scale));
+        // Set initial state from URL or defaults
+        const urlScale = searchParams.get('scale');
+        const urlStrategy = searchParams.get('strategy');
 
-                // Set initial state from URL or defaults
-                const urlScale = searchParams.get('scale');
-                const urlStrategy = searchParams.get('strategy');
+        if (urlScale && !excludedScales.has(urlScale) && scales.includes(urlScale)) {
+            setSelectedScale(urlScale);
+        } else if (scales.length > 0) {
+            setSelectedScale(scales[1] || scales[0]);
+        }
 
-                if (urlScale && !excludedScales.has(urlScale)) {
-                    if (!mergedScales.includes(urlScale)) {
-                        mergedScales.push(urlScale);
-                    }
-                    setSelectedScale(urlScale);
-                } else if (mergedScales.length > 0) {
-                    setSelectedScale(mergedScales[1] || mergedScales[0]);
-                }
-
-                if (urlStrategy) {
-                    setSelectedStrategy(urlStrategy);
-                }
-
-                setScales(mergedScales);
-            } catch (error) {
-                console.error("Failed to load dashboard options", error);
-                setScales(preferredScales);
-            }
-        };
-
-        init();
+        if (urlStrategy) {
+            setSelectedStrategy(urlStrategy);
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -333,12 +330,16 @@ const EnhancedDashboard = () => {
     }, [refreshMargins]);
 
     useEffect(() => {
+        if (!zerodhaConnected) {
+            setLiveOrders([]);
+            return;
+        }
         refreshOrders();
         const interval = setInterval(() => {
             refreshOrders();
         }, 5000);
         return () => clearInterval(interval);
-    }, [refreshOrders]);
+    }, [refreshOrders, zerodhaConnected]);
 
     // 2. Route Synchronization
     useEffect(() => {
@@ -525,19 +526,41 @@ const EnhancedDashboard = () => {
         }
     };
 
+    const closeConnectModal = () => {
+        if (connectTimerRef.current) {
+            clearTimeout(connectTimerRef.current);
+            connectTimerRef.current = null;
+        }
+        setConnectModalOpen(false);
+        setConnectStatus('idle');
+        setConnectError('');
+        setIsConnecting(false);
+    };
+
     const handleConnectZerodha = async (segment) => {
         if (isConnecting) return;
+        if (connectTimerRef.current) {
+            clearTimeout(connectTimerRef.current);
+            connectTimerRef.current = null;
+        }
         setIsConnecting(true);
+        setConnectModalOpen(true);
+        setConnectStatus('loading');
+        setConnectError('');
         try {
             const response = await fetchZerodhaLoginUrl();
             if (!response?.login_url) {
                 throw new Error('Missing Zerodha login URL');
             }
-            window.location.assign(response.login_url);
+            connectTimerRef.current = setTimeout(() => {
+                setIsConnecting(false);
+                window.location.assign(response.login_url);
+            }, 10000);
         } catch (error) {
             console.error("Failed to start Zerodha login", error);
+            setConnectStatus('error');
+            setConnectError('Unable to connect. Please try again.');
             setSegmentError(segment, 'Unable to start Zerodha login. Please try again.');
-        } finally {
             setIsConnecting(false);
         }
     };
@@ -723,22 +746,37 @@ const EnhancedDashboard = () => {
         }
     };
 
-    const renderStockTable = (segment, data, query, setQuery, total, errorMessage, onDismissError) => (
-        <div className="stock-table-container card">
-            {!zerodhaConnected ? (
-                <div className="empty-state">
-                    <p>Connect Zerodha to load live market data and trade.</p>
-                    <button
-                        type="button"
-                        className="btn btn-sm btn-primary"
-                        onClick={() => handleConnectZerodha(segment)}
-                        disabled={isConnecting}
-                    >
-                        {isConnecting ? 'Connecting...' : 'Connect Zerodha'}
-                    </button>
-                </div>
-            ) : (
-                <>
+    const renderStockTable = (segment, data, query, setQuery, total, errorMessage, onDismissError) => {
+        const isAnimating = connectionSuccessAnimation[segment];
+        return (
+            <div className={`stock-table-container card ${isAnimating ? 'connection-success-animation' : ''}`}>
+                {!zerodhaConnected ? (
+                    <div className="empty-state">
+                        <p>Connect Zerodha to load live market data and trade.</p>
+                        <button
+                            type="button"
+                            className="btn btn-sm btn-primary"
+                            onClick={() => handleConnectZerodha(segment)}
+                            disabled={isConnecting}
+                        >
+                            {isConnecting ? 'Connecting...' : 'Connect Zerodha'}
+                        </button>
+                    </div>
+                ) : isAnimating ? (
+                    <div className="connection-success-state">
+                        <div className="connection-success-icon">
+                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" className="success-circle"/>
+                                <path d="M9 12L11 14L15 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="success-check"/>
+                            </svg>
+                        </div>
+                        <h3 className="connection-success-title">
+                            {segment === 'nifty' ? 'Nifty 50' : 'Bank Nifty'} Connected!
+                        </h3>
+                        <p className="connection-success-message">Zerodha is now connected. Loading market data...</p>
+                    </div>
+                ) : (
+                    <>
             <div className="table-toolbar">
                 <div className="table-search">
                     <label className="text-secondary text-sm">Filter</label>
@@ -928,10 +966,11 @@ const EnhancedDashboard = () => {
                     </select>
                 </div>
             </div>
-                </>
-            )}
-        </div>
-    );
+                    </>
+                )}
+            </div>
+        );
+    };
 
     return (
         <div className="enhanced-dashboard container">
@@ -979,7 +1018,6 @@ const EnhancedDashboard = () => {
                                         key={scale}
                                         className={`btn text-sm ${selectedScale === scale ? 'btn-primary' : 'btn-outline'}`}
                                         onClick={() => {
-                                            ensureScalesLoaded();
                                             setSelectedScale(scale);
                                         }}
                                     >
@@ -998,13 +1036,10 @@ const EnhancedDashboard = () => {
                             <select
                                 className="input"
                                 value={selectedStrategy || ''}
-                                onFocus={ensureStrategiesLoaded}
                                 onChange={(e) => setSelectedStrategy(e.target.value)}
+                                disabled
                             >
-                                <option value="" disabled>Select Strategy</option>
-                                {strategies.map(strat => (
-                                    <option key={strat.id} value={strat.id}>{strat.name}</option>
-                                ))}
+                                <option value="">No strategies available</option>
                             </select>
                         </div>
                         <div className="control-group">
@@ -1316,12 +1351,47 @@ const EnhancedDashboard = () => {
                     </div>
                 )
             }
-            {isConnecting && (
+            {connectModalOpen && (
                 <div className="modal-overlay">
-                    <div className="modal-content card" style={{ width: 'min(520px, 92vw)' }}>
+                    <div className="modal-content card connect-modal" style={{ width: 'min(560px, 92vw)' }}>
                         <div className="modal-header">
-                            <h2>Connecting to Zerodha...</h2>
-                            <p className="modal-subtitle">Opening login in a moment.</p>
+                            <div>
+                                <h2>Connect Zerodha</h2>
+                                <p className="modal-subtitle">
+                                    {connectStatus === 'loading' && 'Connecting with Zerodha'}
+                                    {connectStatus === 'error' && 'Connection failed'}
+                                </p>
+                            </div>
+                            <button className="btn-icon" onClick={closeConnectModal} aria-label="Close">
+                                <X size={22} />
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            {connectStatus === 'loading' && (
+                                <div className="connect-state">
+                                    <div className="connect-spinner" />
+                                    <p className="text-secondary text-sm">Please wait while we reach Zerodha.</p>
+                                </div>
+                            )}
+                            {connectStatus === 'error' && (
+                                <div className="connect-state">
+                                    <p className="text-danger text-sm">{connectError || 'Unable to connect.'}</p>
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex gap-2 justify-end">
+                            {connectStatus === 'error' && (
+                                <button
+                                    type="button"
+                                    className="btn btn-outline"
+                                    onClick={() => handleConnectZerodha(activeTab)}
+                                >
+                                    Retry
+                                </button>
+                            )}
+                            <button type="button" className="btn btn-outline" onClick={closeConnectModal}>
+                                Close
+                            </button>
                         </div>
                     </div>
                 </div>

@@ -2,9 +2,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.routes import auth, market
-from app.models import instrument
-from app.models import app_setting
-from app.models import market as market_models
 from app.core.database import Base, engine
 
 # Create tables

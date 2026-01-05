@@ -101,20 +101,6 @@ async def get_nse_universe_zerodha(
     apply_rate_limit(current_user)
     return await market_controller.get_nse_universe_zerodha()
 
-@router.get("/scales", tags=["Market Data"])
-def get_scales(current_user: Optional[str] = Security(get_current_user_optional)):
-    """
-    Get available time scales. Authentication is optional.
-    """
-    return []
-
-@router.get("/strategies", tags=["Market Data"])
-def get_strategies(current_user: Optional[str] = Security(get_current_user_optional)):
-    """
-    Get available strategies. Authentication is optional.
-    """
-    return []
-
 @router.get("/historical-data", tags=["Market Data"])
 async def get_historical_data(
     instrument_token: int,
@@ -213,6 +199,22 @@ async def get_holdings(
     """
     apply_rate_limit(current_user)
     return await market_controller.get_holdings()
+
+@router.get("/holdings/summary", tags=["Portfolio"])
+async def get_holdings_summary(
+    current_user: str = Security(get_current_user)
+):
+    """
+    Get comprehensive holdings summary including:
+    - Available Cash
+    - Utilised Amount
+    - Net Value
+    - Latest Order Margin (if latest order exists)
+    - Estimated Charges (from latest order margin if available)
+    - Latest Order Status (if user has made any purchases)
+    """
+    apply_rate_limit(current_user)
+    return await market_controller.get_holdings_summary()
 
 @router.get("/margins", tags=["Portfolio"])
 def get_margins(

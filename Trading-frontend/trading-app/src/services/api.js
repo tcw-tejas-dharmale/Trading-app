@@ -88,45 +88,11 @@ export const createZerodhaSession = async (requestToken) => {
   return response.data;
 };
 
-export const fetchScales = async () => {
-  const response = await api.get('/market/scales');
-  return response.data;
-};
-
-export const fetchStrategies = async () => {
-  const response = await api.get('/market/strategies');
-  return response.data;
-};
-
 export const fetchHistoricalData = async (instrumentToken, scale) => {
   const response = await api.get('/market/historical-data', {
     params: { instrument_token: instrumentToken, scale },
     headers: getAuthHeaders(),
   });
-  return response.data;
-};
-
-export const fetchFinancialHistory = async (years = 5) => {
-  const response = await api.get('/market/financial-history', {
-    params: { years },
-  });
-  return response.data;
-};
-
-export const fetchCompetitors = async () => {
-  const response = await api.get('/market/competitors');
-  return response.data;
-};
-
-export const fetchROIProjection = async (initialInvestment = 10000, years = 5) => {
-  const response = await api.get('/market/roi-projection', {
-    params: { initial_investment: initialInvestment, years },
-  });
-  return response.data;
-};
-
-export const fetchRiskAssessment = async () => {
-  const response = await api.get('/market/risk-assessment');
   return response.data;
 };
 

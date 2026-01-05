@@ -942,6 +942,141 @@ class MarketDataController:
             )
         return results
 
+    async def get_holdings_summary(self) -> Dict[str, Any]:
+        """
+        Get comprehensive holdings summary including margins, latest order margin, and order status.
+        Returns:
+        - Available Cash
+        - Utilised Amount
+        - Net Value
+        - Latest Order Margin (if latest order exists)
+        - Estimated Charges (from latest order margin if available)
+        - Latest Order Status (if user has made any purchases)
+        """
+        kite = self._require_kite()
+        
+        # Get margins data
+        try:
+            margins_data = kite.margins()
+            equity_margins = margins_data.get("equity", {})
+            
+            available_data = equity_margins.get("available", {})
+            available_cash = (
+                available_data.get("cash")
+                or available_data.get("live_balance")
+                or available_data.get("opening_balance")
+                or 0
+            )
+            
+            utilised_data = equity_margins.get("utilised", {})
+            utilised_amount = (
+                utilised_data.get("debits")
+                or utilised_data.get("span")
+                or utilised_data.get("used_margin")
+                or 0
+            )
+            
+            # Net is a direct value, not a dict
+            net_value = equity_margins.get("net")
+            if net_value is None:
+                # Fallback calculation if net is not available
+                net_value = available_cash - utilised_amount
+        except KiteException as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Unable to fetch margins from Zerodha.",
+            ) from exc
+        
+        # Get latest order
+        latest_order = None
+        latest_order_margin = None
+        estimated_charges = None
+        latest_order_status = None
+        
+        try:
+            orders = kite.orders()
+            if orders and len(orders) > 0:
+                # Sort orders by timestamp (most recent first)
+                def get_timestamp(order_item):
+                    ts = order_item.get("order_timestamp") or order_item.get("exchange_timestamp") or order_item.get("order_time")
+                    if ts:
+                        if isinstance(ts, datetime):
+                            return ts
+                        elif isinstance(ts, str):
+                            try:
+                                # Try to parse ISO format
+                                return datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                            except (ValueError, AttributeError):
+                                pass
+                    return datetime(1970, 1, 1)
+                
+                sorted_orders = sorted(
+                    orders,
+                    key=get_timestamp,
+                    reverse=True
+                )
+                latest_order = sorted_orders[0]
+                
+                # Get order status from the latest order
+                if latest_order:
+                    latest_order_status = {
+                        "order_id": latest_order.get("order_id"),
+                        "status": latest_order.get("status"),
+                        "order_type": latest_order.get("order_type"),
+                        "product": latest_order.get("product"),
+                        "quantity": latest_order.get("quantity"),
+                        "filled_quantity": latest_order.get("filled_quantity"),
+                        "pending_quantity": latest_order.get("pending_quantity"),
+                        "tradingsymbol": latest_order.get("tradingsymbol"),
+                        "transaction_type": latest_order.get("transaction_type"),
+                        "price": latest_order.get("price"),
+                        "trigger_price": latest_order.get("trigger_price"),
+                        "average_price": latest_order.get("average_price"),
+                        "order_timestamp": latest_order.get("order_timestamp"),
+                        "exchange_timestamp": latest_order.get("exchange_timestamp"),
+                        "exchange_order_id": latest_order.get("exchange_order_id"),
+                        "message": latest_order.get("message"),
+                    }
+                    
+                    # Try to get order margins for the latest order if it's a pending/new order
+                    if latest_order.get("status") in ["PENDING", "OPEN", "TRIGGER PENDING"]:
+                        try:
+                            order_params = {
+                                "exchange": latest_order.get("exchange", "NSE"),
+                                "tradingsymbol": latest_order.get("tradingsymbol"),
+                                "transaction_type": latest_order.get("transaction_type"),
+                                "quantity": latest_order.get("pending_quantity") or latest_order.get("quantity"),
+                                "order_type": latest_order.get("order_type", "MARKET"),
+                                "product": latest_order.get("product", "CNC"),
+                                "validity": latest_order.get("validity", "DAY"),
+                                "variety": latest_order.get("variety", "regular"),
+                            }
+                            if latest_order.get("price"):
+                                order_params["price"] = latest_order.get("price")
+                            if latest_order.get("trigger_price"):
+                                order_params["trigger_price"] = latest_order.get("trigger_price")
+                            
+                            margin_list = kite.order_margins([order_params])
+                            if margin_list:
+                                latest_order_margin_data = margin_list[0]
+                                latest_order_margin = latest_order_margin_data.get("total")
+                                estimated_charges = latest_order_margin_data.get("charges")
+                        except KiteException:
+                            # If order margins cannot be calculated, continue without it
+                            pass
+        except KiteException as exc:
+            # If orders cannot be fetched, continue without order data
+            pass
+        
+        return {
+            "available_cash": available_cash,
+            "utilised_amount": utilised_amount,
+            "net_value": net_value,
+            "latest_order_margin": latest_order_margin,
+            "estimated_charges": estimated_charges,
+            "latest_order_status": latest_order_status,
+        }
+
     def place_order(self, order: Dict[str, Any]) -> Dict[str, Any]:
         kite = self._require_kite()
         tradingsymbol = (order.get("tradingsymbol") or "").strip().upper()

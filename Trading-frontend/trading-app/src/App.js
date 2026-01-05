@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar';
-import Dashboard from './components/Dashboard';
+import EnhancedDashboard from './components/EnhancedDashboard';
 import HomePage from './components/HomePage';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
@@ -24,35 +24,45 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
-function App() {
+const AppLayout = () => {
   const [selectedInstrument, setSelectedInstrument] = useState(null);
+  const location = useLocation();
+  const hideNavbar = location.pathname.startsWith('/zerodha/callback');
 
+  return (
+    <div className="App">
+      {!hideNavbar && (
+        <Navbar
+          selectedInstrument={selectedInstrument}
+          onInstrumentChange={setSelectedInstrument}
+        />
+      )}
+      <main>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route
+            path="/dashboard/*"
+            element={
+              <ProtectedRoute>
+                <EnhancedDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/zerodha/callback" element={<ZerodhaCallback />} />
+        </Routes>
+      </main>
+    </div>
+  );
+};
+
+function App() {
   return (
     <Router>
       <AuthProvider>
-        <div className="App">
-          <Navbar
-            selectedInstrument={selectedInstrument}
-            onInstrumentChange={setSelectedInstrument}
-          />
-          <main>
-            <Routes>
-              <Route path="/" element={<HomePage />} />
-              <Route
-                path="/dashboard/*"
-                element={
-                  <ProtectedRoute>
-                    <Dashboard />
-                  </ProtectedRoute>
-                }
-              />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/signup" element={<SignupPage />} />
-              <Route path="/profile" element={<ProfilePage />} />
-              <Route path="/zerodha/callback" element={<ZerodhaCallback />} />
-            </Routes>
-          </main>
-        </div>
+        <AppLayout />
       </AuthProvider>
     </Router>
   );
