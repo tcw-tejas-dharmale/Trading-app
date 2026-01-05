@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Security, Request, Body
+from fastapi import APIRouter, Depends, HTTPException, Security, Request, Body, WebSocket, WebSocketDisconnect
 from typing import Optional, Any
 from pydantic import BaseModel, Field, validator
 from app.core import database
 from app.controllers.market_data_controller import market_controller
+from app.services.kite_ws import build_kite_ws_manager
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from app.core.config import settings
@@ -11,6 +12,7 @@ from app.utils.rate_limiter import SimpleRateLimiter
 router = APIRouter()
 http_bearer = HTTPBearer(auto_error=False)
 rate_limiter = SimpleRateLimiter(limit=60, window_seconds=60)
+kite_ws_manager = build_kite_ws_manager(market_controller)
 
 
 class OrderRequest(BaseModel):
@@ -90,6 +92,23 @@ async def get_instruments(
     """
     apply_rate_limit(current_user)
     return await market_controller.get_instruments(db)
+
+@router.websocket("/ws/quotes")
+async def stream_quotes(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        count = await kite_ws_manager.register(websocket)
+        await websocket.send_json({"type": "status", "state": "connected", "subscribed": count})
+        while True:
+            await websocket.receive_text()
+    except HTTPException as exc:
+        await websocket.send_json({"type": "error", "detail": exc.detail})
+        await websocket.close(code=1011)
+    except WebSocketDisconnect:
+        await kite_ws_manager.unregister(websocket)
+    except Exception:
+        await kite_ws_manager.unregister(websocket)
+        await websocket.close(code=1011)
 
 @router.get("/nse-universe/zerodha", tags=["Market Data"])
 async def get_nse_universe_zerodha(

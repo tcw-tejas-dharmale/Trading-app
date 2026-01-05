@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { fetchNiftyStocks, fetchBankNiftyStocks, fetchPositions, fetchHoldings, fetchMargins, fetchQuote, fetchOrderMargins, fetchOrderStatus, fetchOrders, fetchHistoricalData, fetchZerodhaLoginUrl, syncInstruments, placeOrder } from '../services/api';
+import { subscribeMarketTicks } from '../services/marketWs';
 import CandlestickChart from './CandlestickChart';
 import { Clock, Sliders, Search, Briefcase, X } from 'lucide-react';
 import './EnhancedDashboard.css';
@@ -712,13 +713,17 @@ const EnhancedDashboard = () => {
     }, [orderModal, orderQuantity, orderType, orderPrice, orderVariety]);
 
     useEffect(() => {
-        if (!orderModal) return;
+        if (!orderModal) return undefined;
         const symbol = getOrderSymbol(orderModal.item);
+        if (!symbol) return undefined;
         fetchLivePrice(symbol);
-        const interval = setInterval(() => {
-            fetchLivePrice(symbol);
-        }, 5000);
-        return () => clearInterval(interval);
+        const unsubscribe = subscribeMarketTicks((ticks) => {
+            const match = ticks.find((tick) => tick.symbol === symbol);
+            if (match && Number.isFinite(match.ltp)) {
+                setLivePrice(match.ltp);
+            }
+        });
+        return () => unsubscribe();
     }, [fetchLivePrice, orderModal]);
 
     useEffect(() => {

@@ -427,6 +427,65 @@ class MarketDataController:
             return self._filter_symbols_by_list(symbol_map, bank_symbols)
         return list(symbol_map.keys())
 
+    def get_ws_subscription(self) -> tuple[List[int], Dict[int, str]]:
+        instruments = self._cached_instruments()
+        symbol_map: Dict[str, Dict[str, Any]] = {}
+        nifty_index: Optional[Dict[str, Any]] = None
+        for inst in instruments:
+            if inst.get("segment") != "NSE":
+                continue
+            inst_type = inst.get("instrument_type")
+            if inst_type == "EQ":
+                symbol_map[inst.get("tradingsymbol")] = inst
+            elif inst_type == "INDEX":
+                name = (inst.get("name") or inst.get("tradingsymbol") or "").upper()
+                if name == "NIFTY 50":
+                    nifty_index = inst
+
+        sensex_index: Optional[Dict[str, Any]] = None
+        try:
+            kite = self._require_kite()
+            bse_instruments = kite.instruments("BSE")
+            for inst in bse_instruments:
+                if inst.get("instrument_type") != "INDEX":
+                    continue
+                name = (inst.get("name") or inst.get("tradingsymbol") or "").upper()
+                if "SENSEX" in name:
+                    sensex_index = inst
+                    break
+        except Exception:
+            sensex_index = None
+
+        symbols = self._nse_universe_symbols()
+        if not symbols:
+            symbols = self._nifty50_symbols()
+
+        tokens: List[int] = []
+        token_symbol: Dict[int, str] = {}
+        for symbol in symbols:
+            inst = symbol_map.get(symbol)
+            if not inst:
+                continue
+            token = inst.get("instrument_token")
+            if token is None or token in token_symbol:
+                continue
+            tokens.append(token)
+            token_symbol[token] = symbol
+
+        if nifty_index:
+            token = nifty_index.get("instrument_token")
+            if token is not None and token not in token_symbol:
+                tokens.append(token)
+                token_symbol[token] = nifty_index.get("name") or nifty_index.get("tradingsymbol") or "NIFTY 50"
+
+        if sensex_index:
+            token = sensex_index.get("instrument_token")
+            if token is not None and token not in token_symbol:
+                tokens.append(token)
+                token_symbol[token] = "SENSEX"
+
+        return tokens, token_symbol
+
     def _filter_symbols_by_list(self, symbol_map: Dict[str, Dict[str, Any]], symbols: List[str]) -> List[str]:
         symbol_set = {symbol.strip().upper() for symbol in symbols if symbol}
         return [symbol for symbol in symbol_map.keys() if symbol.upper() in symbol_set]

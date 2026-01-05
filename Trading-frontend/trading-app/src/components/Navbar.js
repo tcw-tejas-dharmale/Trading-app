@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { fetchInstruments, fetchZerodhaLoginUrl, fetchQuote } from '../services/api';
+import { subscribeMarketTicks, subscribeMarketStatus } from '../services/marketWs';
 import './Navbar.css';
 
 const INDEX_SYMBOLS = [
-    { label: 'NIFTY 50', key: 'NSE:NIFTY 50' },
-    { label: 'SENSEX', key: 'BSE:SENSEX' },
+    { label: 'NIFTY 50', key: 'NIFTY 50' },
+    { label: 'SENSEX', key: 'SENSEX' },
 ];
 
 const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
@@ -17,6 +18,8 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
     const [toast, setToast] = useState(null);
     const [indexQuotes, setIndexQuotes] = useState({});
     const [indexError, setIndexError] = useState('');
+    const lastTickAtRef = React.useRef(0);
+    const pollIntervalRef = React.useRef(null);
     const userInitial = (user?.name || user?.email || '').trim().charAt(0).toUpperCase();
 
     const showToast = (message, type = 'info') => {
@@ -68,42 +71,78 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
     }, [location.pathname]);
 
     useEffect(() => {
-        let isActive = true;
-        const fetchIndexQuotes = async () => {
+        const indexSet = new Set(INDEX_SYMBOLS.map((item) => item.key));
+        const pollQuotes = async () => {
             try {
-                setIndexError('');
-                const symbols = INDEX_SYMBOLS.map((item) => item.key).join(',');
+                const symbols = INDEX_SYMBOLS.map((item) => item.key === 'SENSEX' ? 'BSE:SENSEX' : 'NSE:NIFTY 50').join(',');
                 const data = await fetchQuote(symbols);
-                if (!isActive) return;
                 const nextQuotes = {};
                 INDEX_SYMBOLS.forEach((item) => {
-                    const quote = data?.[item.key];
+                    const key = item.key === 'SENSEX' ? 'BSE:SENSEX' : 'NSE:NIFTY 50';
+                    const quote = data?.[key];
                     if (quote) {
-                        nextQuotes[item.key] = quote;
+                        nextQuotes[item.key] = {
+                            symbol: item.key,
+                            ltp: quote.last_price,
+                            close: quote?.ohlc?.close,
+                            change_pct: null,
+                        };
                     }
                 });
                 if (Object.keys(nextQuotes).length > 0) {
                     setIndexQuotes(nextQuotes);
                 }
             } catch (error) {
-                if (!isActive) return;
-                const status = error?.response?.status;
-                if (status === 401 || status === 403) {
-                    setIndexError('Connect Zerodha to see indices.');
-                }
+                setIndexError('Unable to fetch live indices.');
             }
         };
-        fetchIndexQuotes();
-        const interval = setInterval(fetchIndexQuotes, 5000);
+
+        const ensurePolling = () => {
+            if (pollIntervalRef.current) return;
+            pollIntervalRef.current = setInterval(pollQuotes, 5000);
+            pollQuotes();
+        };
+
+        const unsubscribeTicks = subscribeMarketTicks((ticks) => {
+            lastTickAtRef.current = Date.now();
+            setIndexError('');
+            setIndexQuotes((prev) => {
+                const next = { ...prev };
+                ticks.forEach((tick) => {
+                    if (indexSet.has(tick.symbol)) {
+                        next[tick.symbol] = tick;
+                    }
+                });
+                return next;
+            });
+        });
+        const unsubscribeStatus = subscribeMarketStatus((payload) => {
+            if (payload?.type === 'error') {
+                setIndexError('Unable to stream indices. Falling back to polling.');
+                ensurePolling();
+            }
+        });
+
+        const watchdog = setInterval(() => {
+            if (!lastTickAtRef.current || Date.now() - lastTickAtRef.current > 8000) {
+                ensurePolling();
+            }
+        }, 4000);
+
         return () => {
-            isActive = false;
-            clearInterval(interval);
+            unsubscribeTicks();
+            unsubscribeStatus();
+            clearInterval(watchdog);
+            if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current);
+                pollIntervalRef.current = null;
+            }
         };
     }, []);
 
     const renderIndexQuote = (item) => {
-        const quote = indexQuotes[item.key];
-        if (!quote) {
+        const tick = indexQuotes[item.key];
+        if (!tick) {
             return (
                 <div className="index-ticker">
                     <span className="index-label">{item.label}</span>
@@ -111,14 +150,10 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
                 </div>
             );
         }
-        const lastPrice = Number(quote.last_price);
-        const close = Number(quote?.ohlc?.close);
-        const change = Number.isFinite(quote.net_change)
-            ? Number(quote.net_change)
-            : (Number.isFinite(lastPrice) && Number.isFinite(close) ? lastPrice - close : null);
-        const changePct = Number.isFinite(change) && Number.isFinite(close) && close !== 0
-            ? (change / close) * 100
-            : null;
+        const lastPrice = Number(tick.ltp);
+        const close = Number(tick.close);
+        const change = Number.isFinite(lastPrice) && Number.isFinite(close) ? lastPrice - close : null;
+        const changePct = Number.isFinite(tick.change_pct) ? tick.change_pct : null;
         const direction = Number.isFinite(change) && change !== 0 ? (change > 0 ? 'up' : 'down') : 'flat';
         return (
             <div className={`index-ticker ${direction}`}>
