@@ -371,7 +371,31 @@ const EnhancedDashboard = () => {
         navigate(route);
     };
 
-    const loadChartData = async (stock, scale) => {
+    const normalizeChartData = useCallback((candles) => {
+        if (!Array.isArray(candles)) return [];
+        return [...candles]
+            .filter((entry) => entry && entry.date)
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    }, []);
+
+    const getHistoryRange = useCallback((scale) => {
+        const daysByScale = {
+            "1m": 5,
+            "5m": 10,
+            "15m": 30,
+            "30m": 60,
+            "1h": 120,
+            "1d": 365,
+            "2d": 730,
+            "1M": 1825,
+        };
+        const days = daysByScale[scale] || 30;
+        const end = new Date();
+        const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
+        return { start: start.toISOString(), end: end.toISOString() };
+    }, []);
+
+    const loadChartData = useCallback(async (stock, scale) => {
         if (!stock) {
             setModalChartData([]);
             return;
@@ -382,13 +406,14 @@ const EnhancedDashboard = () => {
             return;
         }
         try {
-            const data = await fetchHistoricalData(token, scale);
-            setModalChartData(Array.isArray(data) ? data : []);
+            const range = getHistoryRange(scale);
+            const data = await fetchHistoricalData(token, scale, range);
+            setModalChartData(normalizeChartData(data));
         } catch (error) {
             console.error("Failed to load historical data", error);
             setModalChartData([]);
         }
-    };
+    }, [getHistoryRange, normalizeChartData]);
 
     const handleStockClick = async (stock) => {
         setSelectedStockForChart(stock);
@@ -397,10 +422,19 @@ const EnhancedDashboard = () => {
 
     // Update modal data when scale changes
     useEffect(() => {
-        if (selectedStockForChart) {
-            loadChartData(selectedStockForChart, selectedScale);
-        }
-    }, [selectedScale, selectedStockForChart]);
+        if (!selectedStockForChart) return undefined;
+        let active = true;
+        const refresh = async () => {
+            if (!active) return;
+            await loadChartData(selectedStockForChart, selectedScale);
+        };
+        refresh();
+        const interval = setInterval(refresh, 15000);
+        return () => {
+            active = false;
+            clearInterval(interval);
+        };
+    }, [loadChartData, selectedScale, selectedStockForChart]);
 
     const closeModal = () => {
         setSelectedStockForChart(null);
@@ -1075,8 +1109,8 @@ const EnhancedDashboard = () => {
                         <div className="section-header">
                             <h2>Nifty 50 Constituents</h2>
                         </div>
-                        {zerodhaConnected && (
-                            <div className="card flex flex-wrap gap-2 items-center">
+                            {zerodhaConnected && (
+                              <div className="card flex flex-wrap gap-2 items-center category-toolbar">
                                 {niftyCategories.map((category) => (
                                     <button
                                         key={category.id}
@@ -1347,6 +1381,17 @@ const EnhancedDashboard = () => {
                                     <span>Volume</span>
                                     <strong>{Number.isFinite(latestCandle?.volume) ? latestCandle.volume.toLocaleString() : '--'}</strong>
                                 </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2 scale-buttons modal-scale-controls">
+                                {scales.map(scale => (
+                                    <button
+                                        key={scale}
+                                        className={`btn btn-sm ${selectedScale === scale ? 'btn-primary' : 'btn-outline'}`}
+                                        onClick={() => setSelectedScale(scale)}
+                                    >
+                                        {typeof scale === 'string' && scale.endsWith('d') ? scale.toUpperCase() : scale}
+                                    </button>
+                                ))}
                             </div>
                             <div className="modal-body" style={{ height: '400px', width: '100%' }}>
                                 <CandlestickChart

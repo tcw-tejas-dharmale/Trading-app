@@ -88,9 +88,14 @@ export const createZerodhaSession = async (requestToken) => {
   return response.data;
 };
 
-export const fetchHistoricalData = async (instrumentToken, scale) => {
+export const fetchHistoricalData = async (instrumentToken, scale, range = {}) => {
   const response = await api.get('/market/historical-data', {
-    params: { instrument_token: instrumentToken, scale },
+    params: {
+      instrument_token: instrumentToken,
+      scale,
+      start: range.start,
+      end: range.end,
+    },
     headers: getAuthHeaders(),
   });
   return response.data;

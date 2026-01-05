@@ -263,3 +263,9 @@ button {
   font-weight: 700;
   letter-spacing: -0.4px;
 }
+
+@media (max-width: 640px) {
+  .container {
+    padding: 0 0.75rem;
+  }
+}

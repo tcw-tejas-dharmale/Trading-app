@@ -35,6 +35,7 @@
 
 .nifty50-hero-card {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1.5rem;
   padding: 1.5rem 1.75rem;
   border-radius: 1.25rem;
@@ -126,11 +127,34 @@
 }
 
 @media (max-width: 600px) {
+  .nifty50-page {
+    padding: 2rem 0 3rem;
+  }
+
+  .nifty50-table {
+    padding: 1.25rem;
+  }
+
+  .nifty50-table-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .nifty50-hero-card {
+    gap: 1rem;
+  }
+
   .nifty50-table-scroll {
     overflow-x: auto;
   }
 
   .nifty50-table-scroll table {
-    min-width: 520px;
+    min-width: 460px;
+  }
+
+  .nifty50-table-scroll th,
+  .nifty50-table-scroll td {
+    padding: 0.6rem 0.75rem;
+    font-size: 0.85rem;
   }
 }

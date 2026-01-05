@@ -355,6 +355,19 @@ class MarketDataController:
         }
         return mapping.get(scale, "5minute")
 
+    def _default_history_days(self, scale: str) -> int:
+        mapping = {
+            "1m": 5,
+            "5m": 10,
+            "15m": 30,
+            "30m": 60,
+            "1h": 120,
+            "1d": 365,
+            "2d": 730,
+            "1M": 1825,
+        }
+        return mapping.get(scale, 30)
+
     def _get_candles(self, instrument_token: int, scale: str, ttl_seconds: int = 10) -> List[Dict[str, Any]]:
         cache_key = f"{instrument_token}:{scale}"
         now = time.time()
@@ -370,7 +383,7 @@ class MarketDataController:
         kite = self._require_kite()
         interval = self._interval_from_scale(scale)
         end = datetime.utcnow()
-        start = end - timedelta(days=7)
+        start = end - timedelta(days=self._default_history_days(scale))
         try:
             candles = kite.historical_data(
                 instrument_token=instrument_token,
@@ -833,7 +846,7 @@ class MarketDataController:
             end = datetime.fromisoformat(to_date)
         else:
             end = datetime.utcnow()
-            start = end - timedelta(days=30)
+            start = end - timedelta(days=self._default_history_days(interval))
 
         try:
             candles = kite.historical_data(

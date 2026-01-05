@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import {
     Chart as ChartJS,
     CategoryScale,
@@ -13,6 +13,7 @@ import {
 } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
 import zoomPlugin from 'chartjs-plugin-zoom';
+import { createChart, CrosshairMode, LineStyle, CandlestickSeries, LineSeries } from 'lightweight-charts';
 
 ChartJS.register(
     CategoryScale,
@@ -28,8 +29,23 @@ ChartJS.register(
 );
 
 const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage = true, chartMode = 'candlestick', scale = '5m' }) => {
-    const chartRef = useRef(null);
-    const safeData = Array.isArray(data) ? data : [];
+    const chartContainerRef = useRef(null);
+    const chartInstanceRef = useRef(null);
+    const candleSeriesRef = useRef(null);
+    const ma20SeriesRef = useRef(null);
+    const ma50SeriesRef = useRef(null);
+    const priceLinesRef = useRef([]);
+    const userInteractedRef = useRef(false);
+    const suppressInteractionRef = useRef(false);
+    const pendingFitRef = useRef(false);
+    const lastScaleRef = useRef(scale);
+    const tooltipRef = useRef(null);
+    const safeData = useMemo(() => {
+        if (!Array.isArray(data)) return [];
+        return [...data]
+            .filter((entry) => entry && entry.date)
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    }, [data]);
 
     // Calculate moving averages
     const calculateMA = (period) => {
@@ -92,41 +108,256 @@ const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage =
     // Prepare volume and color data early for potential volume chart use
     const volumeData = safeData.map(d => d.volume);
     const volumeColors = candleData.map(c => c.isBullish ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)');
+    const candleSeriesData = useMemo(() => (
+        safeData.map((d) => ({
+            time: Math.floor(new Date(d.date).getTime() / 1000),
+            open: d.open,
+            high: d.high,
+            low: d.low,
+            close: d.close,
+        }))
+    ), [safeData]);
 
-    const updateCandlestickYAxis = useCallback((chart) => {
-        const xScale = chart?.scales?.x;
-        const yScale = chart?.scales?.y;
-        if (!xScale || !yScale || candleData.length === 0) return;
+    const ma20SeriesData = useMemo(() => (
+        safeData.map((d, index) => ({
+            time: Math.floor(new Date(d.date).getTime() / 1000),
+            value: ma20[index],
+        })).filter((point) => Number.isFinite(point.value))
+    ), [ma20, safeData]);
 
-        const minIndex = Number.isFinite(xScale.min) ? Math.max(0, Math.floor(xScale.min)) : 0;
-        const maxIndex = Number.isFinite(xScale.max)
-            ? Math.min(candleData.length - 1, Math.ceil(xScale.max))
-            : candleData.length - 1;
-
-        let min = Number.POSITIVE_INFINITY;
-        let max = Number.NEGATIVE_INFINITY;
-        for (let i = minIndex; i <= maxIndex; i += 1) {
-            const candle = candleData[i];
-            if (!candle) continue;
-            min = Math.min(min, candle.low);
-            max = Math.max(max, candle.high);
-        }
-
-        if (!Number.isFinite(min) || !Number.isFinite(max)) return;
-        const padding = (max - min) * 0.05 || 1;
-        chart.options.scales.y.min = min - padding;
-        chart.options.scales.y.max = max + padding;
-    }, [candleData]);
+    const ma50SeriesData = useMemo(() => (
+        safeData.map((d, index) => ({
+            time: Math.floor(new Date(d.date).getTime() / 1000),
+            value: ma50[index],
+        })).filter((point) => Number.isFinite(point.value))
+    ), [ma50, safeData]);
 
     useEffect(() => {
-        if (!chartRef.current) return;
-        const chart = chartRef.current;
-        // Only update Y-axis if in candlestick mode, or if safe to do so
-        if (chartMode === 'candlestick') {
-            updateCandlestickYAxis(chart);
-            chart.update('none');
+        if (lastScaleRef.current !== scale) {
+            lastScaleRef.current = scale;
+            userInteractedRef.current = false;
+            pendingFitRef.current = true;
         }
-    }, [updateCandlestickYAxis, chartMode]);
+    }, [scale]);
+
+    useEffect(() => {
+        if (chartMode !== 'candlestick' || safeData.length === 0) {
+            return undefined;
+        }
+
+        const container = chartContainerRef.current;
+        if (!container) {
+            return undefined;
+        }
+
+        if (chartInstanceRef.current) {
+            chartInstanceRef.current.remove();
+            chartInstanceRef.current = null;
+            candleSeriesRef.current = null;
+            ma20SeriesRef.current = null;
+            ma50SeriesRef.current = null;
+        }
+
+        userInteractedRef.current = false;
+
+        const chart = createChart(container, {
+            width: container.clientWidth,
+            height: container.clientHeight,
+            layout: {
+                background: { color: '#0b1220' },
+                textColor: '#94a3b8',
+                fontFamily: '"Space Grotesk", sans-serif',
+            },
+            grid: {
+                vertLines: { color: 'rgba(148, 163, 184, 0.12)' },
+                horzLines: { color: 'rgba(148, 163, 184, 0.12)' },
+            },
+            crosshair: { mode: CrosshairMode.Normal },
+            rightPriceScale: {
+                borderColor: 'rgba(148, 163, 184, 0.2)',
+            },
+            timeScale: {
+                borderColor: 'rgba(148, 163, 184, 0.2)',
+                rightOffset: 6,
+                barSpacing: 6,
+                minBarSpacing: 3,
+                lockVisibleTimeRangeOnResize: true,
+                timeVisible: !isDayOrAbove,
+                secondsVisible: false,
+            },
+            handleScroll: {
+                mouseWheel: true,
+                pressedMouseMove: true,
+                horzTouchDrag: true,
+                vertTouchDrag: false,
+            },
+            handleScale: {
+                mouseWheel: true,
+                pinch: true,
+                axisPressedMouseMove: true,
+            },
+        });
+
+        chartInstanceRef.current = chart;
+        candleSeriesRef.current = chart.addSeries(CandlestickSeries, {
+            upColor: '#22c55e',
+            downColor: '#ef4444',
+            borderUpColor: '#22c55e',
+            borderDownColor: '#ef4444',
+            wickUpColor: '#22c55e',
+            wickDownColor: '#ef4444',
+        });
+
+        const handleRangeChange = () => {
+            if (suppressInteractionRef.current) return;
+            userInteractedRef.current = true;
+        };
+        chart.timeScale().subscribeVisibleLogicalRangeChange(handleRangeChange);
+
+        const resizeObserver = new ResizeObserver(() => {
+            if (!chartContainerRef.current) return;
+            chart.applyOptions({
+                width: chartContainerRef.current.clientWidth,
+                height: chartContainerRef.current.clientHeight,
+            });
+        });
+        resizeObserver.observe(container);
+
+        return () => {
+            resizeObserver.disconnect();
+            chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleRangeChange);
+            chart.remove();
+            chartInstanceRef.current = null;
+            candleSeriesRef.current = null;
+            ma20SeriesRef.current = null;
+            ma50SeriesRef.current = null;
+        };
+    }, [chartMode, isDayOrAbove, safeData.length]);
+
+    useEffect(() => {
+        if (chartMode !== 'candlestick' || safeData.length === 0) {
+            return;
+        }
+        const chart = chartInstanceRef.current;
+        const series = candleSeriesRef.current;
+        if (!chart || !series) {
+            return;
+        }
+
+        series.setData(candleSeriesData);
+
+        priceLinesRef.current.forEach((line) => series.removePriceLine(line));
+        priceLinesRef.current = tradeMarkers.map((marker) => (
+            series.createPriceLine({
+                price: marker.value,
+                color: marker.color,
+                lineWidth: 1,
+                lineStyle: LineStyle.Dashed,
+                axisLabelVisible: true,
+                title: `${marker.label} ${formatPrice(marker.value)}`,
+            })
+        ));
+
+        const shouldShowMa20 = showMovingAverage && ma20SeriesData.length > 0;
+        const shouldShowMa50 = showMovingAverage && ma50SeriesData.length > 0;
+
+        if (shouldShowMa20) {
+            if (!ma20SeriesRef.current) {
+                ma20SeriesRef.current = chart.addSeries(LineSeries, {
+                    color: '#fbbf24',
+                    lineWidth: 1,
+                    lineStyle: LineStyle.Dashed,
+                });
+            }
+            ma20SeriesRef.current.setData(ma20SeriesData);
+        } else if (ma20SeriesRef.current) {
+            chart.removeSeries(ma20SeriesRef.current);
+            ma20SeriesRef.current = null;
+        }
+
+        if (shouldShowMa50) {
+            if (!ma50SeriesRef.current) {
+                ma50SeriesRef.current = chart.addSeries(LineSeries, {
+                    color: '#8b5cf6',
+                    lineWidth: 1,
+                    lineStyle: LineStyle.Dashed,
+                });
+            }
+            ma50SeriesRef.current.setData(ma50SeriesData);
+        } else if (ma50SeriesRef.current) {
+            chart.removeSeries(ma50SeriesRef.current);
+            ma50SeriesRef.current = null;
+        }
+
+        if (pendingFitRef.current || !userInteractedRef.current) {
+            suppressInteractionRef.current = true;
+            chart.timeScale().fitContent();
+            suppressInteractionRef.current = false;
+            pendingFitRef.current = false;
+        }
+    }, [chartMode, candleSeriesData, tradeMarkers, formatPrice, showMovingAverage, ma20SeriesData, ma50SeriesData, safeData.length]);
+
+    useEffect(() => {
+        if (chartMode !== 'candlestick' || safeData.length === 0) {
+            return undefined;
+        }
+        const chart = chartInstanceRef.current;
+        const series = candleSeriesRef.current;
+        const tooltip = tooltipRef.current;
+        const container = chartContainerRef.current;
+        if (!chart || !series || !tooltip || !container) {
+            return undefined;
+        }
+
+        const formatTime = (timestamp) => {
+            const date = new Date(timestamp * 1000);
+            return date.toLocaleString([], isDayOrAbove
+                ? { month: 'short', day: 'numeric' }
+                : { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
+            );
+        };
+
+        const handleCrosshairMove = (param) => {
+            if (!param?.time || !param?.point) {
+                tooltip.style.display = 'none';
+                return;
+            }
+            const price = param.seriesData.get(series);
+            if (!price) {
+                tooltip.style.display = 'none';
+                return;
+            }
+            const { open, high, low, close } = price;
+            tooltip.innerHTML = `
+                <div class="candlestick-tooltip-title">${formatTime(param.time)}</div>
+                <div>Open: ${formatPrice(open)}</div>
+                <div>High: ${formatPrice(high)}</div>
+                <div>Low: ${formatPrice(low)}</div>
+                <div>Close: ${formatPrice(close)}</div>
+                <div>Change: ${((close - open) / open * 100).toFixed(2)}%</div>
+            `;
+            tooltip.style.display = 'block';
+
+            const margin = 12;
+            const { x, y } = param.point;
+            const tooltipWidth = tooltip.offsetWidth || 120;
+            const tooltipHeight = tooltip.offsetHeight || 80;
+            const left = Math.min(
+                Math.max(x + margin, margin),
+                container.clientWidth - tooltipWidth - margin
+            );
+            const top = Math.min(
+                Math.max(y + margin, margin),
+                container.clientHeight - tooltipHeight - margin
+            );
+
+            tooltip.style.left = `${left}px`;
+            tooltip.style.top = `${top}px`;
+        };
+
+        chart.subscribeCrosshairMove(handleCrosshairMove);
+        return () => chart.unsubscribeCrosshairMove(handleCrosshairMove);
+    }, [chartMode, formatPrice, isDayOrAbove, safeData.length]);
 
     // If chart mode is volume, only show volume bars
     if (safeData.length === 0) {
@@ -192,7 +423,7 @@ const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage =
             {
                 type: 'line',
                 label: 'Close Price',
-                data: data.map(d => d.close),
+                data: safeData.map(d => d.close),
                 borderColor: '#38bdf8',
                 backgroundColor: 'rgba(56, 189, 248, 0.1)',
                 borderWidth: 2,
@@ -270,238 +501,10 @@ const CandlestickChart = ({ data, label, showVolume = false, showMovingAverage =
         );
     }
 
-    // For candlestick mode - Create custom plugin to draw candlesticks
-    const candlestickPlugin = {
-        id: 'candlestick',
-        afterDatasetsDraw: (chart) => {
-            const ctx = chart.ctx;
-            const yScale = chart.scales.y;
-            const xScale = chart.scales.x;
-
-            const minIndex = Number.isFinite(xScale.min) ? Math.max(0, Math.floor(xScale.min)) : 0;
-            const maxIndex = Number.isFinite(xScale.max)
-                ? Math.min(candleData.length - 1, Math.ceil(xScale.max))
-                : candleData.length - 1;
-            const visibleCount = Math.max(1, maxIndex - minIndex + 1);
-            const candleWidth = Math.max(4, (xScale.width / visibleCount) * 0.6);
-
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(chart.chartArea.left, chart.chartArea.top, chart.chartArea.width, chart.chartArea.height);
-            ctx.clip();
-            candleData.forEach((candle, index) => {
-                const x = xScale.getPixelForValue(index);
-                const highY = yScale.getPixelForValue(candle.high);
-                const lowY = yScale.getPixelForValue(candle.low);
-                const openY = yScale.getPixelForValue(candle.open);
-                const closeY = yScale.getPixelForValue(candle.close);
-
-                const bodyTop = Math.min(openY, closeY);
-                const bodyBottom = Math.max(openY, closeY);
-                const bodyHeight = bodyBottom - bodyTop;
-                const bodyWidth = candleWidth;
-
-                const color = candle.isBullish ? '#22c55e' : '#ef4444';
-
-                // Draw wick (high-low line)
-                ctx.strokeStyle = color;
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                ctx.moveTo(x, highY);
-                ctx.lineTo(x, lowY);
-                ctx.stroke();
-
-                // Draw body rectangle
-                ctx.fillStyle = color;
-                ctx.strokeStyle = color;
-                ctx.lineWidth = 1;
-                ctx.fillRect(x - bodyWidth / 2, bodyTop, bodyWidth, bodyHeight || 1);
-                ctx.strokeRect(x - bodyWidth / 2, bodyTop, bodyWidth, bodyHeight || 1);
-            });
-            ctx.restore();
-        }
-    };
-
-    const tradeMarkerPlugin = {
-        id: 'tradeMarkers',
-        afterDatasetsDraw: (chart) => {
-            if (!tradeMarkers.length) return;
-            const ctx = chart.ctx;
-            const chartArea = chart.chartArea;
-            const yScale = chart.scales.y;
-            if (!chartArea || !yScale) return;
-
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(chartArea.left, chartArea.top, chartArea.width, chartArea.height);
-            ctx.clip();
-            ctx.font = '12px "Space Grotesk", sans-serif';
-
-            tradeMarkers.forEach((marker) => {
-                const y = yScale.getPixelForValue(marker.value);
-                if (y < chartArea.top || y > chartArea.bottom) return;
-
-                ctx.setLineDash([6, 6]);
-                ctx.strokeStyle = marker.color;
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                ctx.moveTo(chartArea.left, y);
-                ctx.lineTo(chartArea.right, y);
-                ctx.stroke();
-                ctx.setLineDash([]);
-
-                const text = `${marker.label} ${formatPrice(marker.value)}`;
-                const padding = 6;
-                const textWidth = ctx.measureText(text).width;
-                const boxWidth = textWidth + padding * 2;
-                const boxHeight = 20;
-                const x = chartArea.right - boxWidth - 8;
-                const yBox = Math.min(chartArea.bottom - boxHeight, Math.max(chartArea.top, y - boxHeight / 2));
-
-                ctx.fillStyle = marker.bg;
-                ctx.strokeStyle = marker.color;
-                ctx.lineWidth = 1;
-                ctx.fillRect(x, yBox, boxWidth, boxHeight);
-                ctx.strokeRect(x, yBox, boxWidth, boxHeight);
-                ctx.fillStyle = '#e2e8f0';
-                ctx.fillText(text, x + padding, yBox + 14);
-            });
-
-            ctx.restore();
-        }
-    };
-
-
-
-    // Create datasets for candlestick (moving averages only, candlesticks drawn by plugin)
-    const candlestickDatasets = [
-        ...(showMovingAverage && ma20.some(v => v !== null) ? [{
-            type: 'line',
-            label: 'MA 20',
-            data: ma20,
-            borderColor: '#fbbf24',
-            borderWidth: 1.5,
-            borderDash: [5, 5],
-            fill: false,
-            pointRadius: 0,
-            pointHoverRadius: 3,
-            order: 0,
-        }] : []),
-        ...(showMovingAverage && ma50.some(v => v !== null) ? [{
-            type: 'line',
-            label: 'MA 50',
-            data: ma50,
-            borderColor: '#8b5cf6',
-            borderWidth: 1.5,
-            borderDash: [5, 5],
-            fill: false,
-            pointRadius: 0,
-            pointHoverRadius: 3,
-            order: 0,
-        }] : []),
-        // Hidden dataset to establish scale
-        {
-            type: 'line',
-            label: 'Price',
-            data: data.map(d => d.close),
-            borderColor: 'transparent',
-            backgroundColor: 'transparent',
-            pointRadius: 0,
-            pointHoverRadius: 0,
-            order: 1,
-        }
-    ];
-
     return (
         <div className="candlestick-chart-wrapper">
-            <Line
-                data={{ labels, datasets: candlestickDatasets }}
-                plugins={[candlestickPlugin, tradeMarkerPlugin]}
-                options={{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: { mode: 'index', intersect: false },
-                    plugins: {
-                        legend: {
-                            display: false,
-                            position: 'top',
-                            labels: { color: '#94a3b8', usePointStyle: true, padding: 15 }
-                        },
-                        tooltip: {
-                            backgroundColor: '#1e293b',
-                            titleColor: '#f8fafc',
-                            bodyColor: '#94a3b8',
-                            borderColor: '#334155',
-                            borderWidth: 1,
-                            padding: 12,
-                            callbacks: {
-                                title: (context) => labels[context[0].dataIndex],
-                                label: function (context) {
-                                    const dataIndex = context.dataIndex;
-                                    const candle = candleData[dataIndex];
-                                    const datasetLabel = context.dataset.label || '';
-
-                                    // For hidden Price dataset, show candlestick data
-                                    if (datasetLabel === 'Price') {
-                                        return [
-                                            `Open: ${candle.open.toFixed(2)}`,
-                                            `High: ${candle.high.toFixed(2)}`,
-                                            `Low: ${candle.low.toFixed(2)}`,
-                                            `Close: ${candle.close.toFixed(2)}`,
-                                            `Change: ${((candle.close - candle.open) / candle.open * 100).toFixed(2)}%`
-                                        ];
-                                    }
-                                    // For moving averages
-                                    return `${datasetLabel}: ${context.parsed.y?.toFixed(2) || 'N/A'}`;
-                                },
-                                filter: (item) => {
-                                    // Hide the transparent Price dataset from tooltip, we'll show candlestick data instead
-                                    if (item.dataset.label === 'Price') {
-                                        return true; // Keep it to show candlestick info
-                                    }
-                                    return true;
-                                }
-                            }
-                        },
-                        zoom: {
-                            zoom: {
-                                wheel: { enabled: true, speed: 0.1 },
-                                pinch: { enabled: true },
-                                mode: 'x',
-                                onZoomComplete: ({ chart }) => {
-                                    updateCandlestickYAxis(chart);
-                                    chart.update('none');
-                                }
-                            },
-                            pan: {
-                                enabled: true,
-                                mode: 'x',
-                                onPanComplete: ({ chart }) => {
-                                    updateCandlestickYAxis(chart);
-                                    chart.update('none');
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            grid: { color: '#334155', display: false },
-                            ticks: { color: '#94a3b8', maxTicksLimit: 15, maxRotation: 45, minRotation: 0 }
-                        },
-                        y: {
-                            type: 'linear',
-                            display: true,
-                            position: 'left',
-                            grid: { color: '#334155' },
-                            ticks: { color: '#94a3b8', callback: (value) => value.toFixed(2) },
-                            title: { display: true, text: 'Price', color: '#94a3b8' },
-                            suggestedMin: Math.min(...candleData.map(c => c.low)) * 0.98,
-                            suggestedMax: Math.max(...candleData.map(c => c.high)) * 1.02
-                        }
-                    }
-                }}
-                ref={chartRef}
-            />
+            <div ref={chartContainerRef} className="candlestick-chart-canvas" />
+            <div ref={tooltipRef} className="candlestick-tooltip" style={{ display: 'none' }} />
         </div>
     );
 };

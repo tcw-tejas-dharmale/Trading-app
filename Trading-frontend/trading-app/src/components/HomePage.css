@@ -1,11 +1,8 @@
 .homepage {
   min-height: calc(100vh - 80px);
-  max-height: calc(100vh - 80px);
-  /* Strictly limit height */
-  overflow: hidden;
-  /* Prevent scrolling */
   display: flex;
   flex-direction: column;
+  padding-bottom: 2rem;
 }
 
 /* Hero Section */
