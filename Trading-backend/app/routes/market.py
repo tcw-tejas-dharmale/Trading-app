@@ -248,6 +248,23 @@ def get_orders(
     apply_rate_limit(current_user)
     return market_controller.get_orders()
 
+@router.get("/orders/local", tags=["Orders"])
+def get_local_orders(
+    limit: int = 50,
+    offset: int = 0,
+    db: Any = Depends(database.get_db),
+    current_user: str = Security(get_current_user)
+):
+    """
+    Get orders stored in the local database for the authenticated user.
+    """
+    apply_rate_limit(current_user)
+    try:
+        user_id = int(current_user)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid user id")
+    return market_controller.get_local_orders(db, user_id, limit=limit, offset=offset)
+
 @router.get("/orders/{order_id}", tags=["Orders"])
 def get_order_status(
     order_id: str,
@@ -296,10 +313,15 @@ def create_zerodha_session(
 @router.post("/orders", tags=["Orders"])
 def place_order(
     order: OrderRequest,
+    db: Any = Depends(database.get_db),
     current_user: str = Security(get_current_user)
 ):
     apply_rate_limit(current_user)
-    return market_controller.place_order(order.dict())
+    try:
+        user_id = int(current_user)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid user id")
+    return market_controller.place_order(db, user_id, order.dict())
 
 @router.post("/sync-instruments", tags=["Zerodha"])
 async def sync_instruments(

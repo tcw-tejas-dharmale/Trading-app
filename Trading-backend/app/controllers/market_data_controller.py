@@ -12,6 +12,7 @@ from kiteconnect.exceptions import KiteException
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.app_setting import AppSetting
+from app.models.order import Order
 
 
 class MarketDataController:
@@ -402,9 +403,9 @@ class MarketDataController:
     def _symbols_from_db(self, db, segment: str) -> List[str]:
         symbol_map = self._symbol_map()
         if segment == "NIFTY50":
-            nifty_symbols = self._nifty50_symbols()
+            nifty_symbols = self._nse_universe_symbols()
             if not nifty_symbols:
-                nifty_symbols = self._nse_universe_symbols()
+                nifty_symbols = self._nifty50_symbols()
             return self._filter_symbols_by_list(symbol_map, nifty_symbols)
         if segment == "BANKNIFTY":
             bank_symbols = self._nifty_category_symbols("banks")
@@ -1077,7 +1078,79 @@ class MarketDataController:
             "latest_order_status": latest_order_status,
         }
 
-    def place_order(self, order: Dict[str, Any]) -> Dict[str, Any]:
+    def _order_to_dict(self, order: Order) -> Dict[str, Any]:
+        return {
+            "id": order.id,
+            "user_id": order.user_id,
+            "zerodha_order_id": order.zerodha_order_id,
+            "tradingsymbol": order.tradingsymbol,
+            "exchange": order.exchange,
+            "transaction_type": order.transaction_type,
+            "order_type": order.order_type,
+            "product": order.product,
+            "quantity": order.quantity,
+            "price": order.price,
+            "trigger_price": order.trigger_price,
+            "variety": order.variety,
+            "validity": order.validity,
+            "required_margin": order.required_margin,
+            "charges_total": order.charges_total,
+            "market_open": order.market_open,
+            "status": order.status,
+            "created_at": order.created_at.isoformat() if order.created_at else None,
+        }
+
+    def get_local_orders(self, db, user_id: int, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+        limit = max(1, min(int(limit), 200))
+        offset = max(0, int(offset))
+        orders = (
+            db.query(Order)
+            .filter(Order.user_id == user_id)
+            .order_by(Order.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        return [self._order_to_dict(order) for order in orders]
+
+    def _store_local_order(
+        self,
+        db,
+        user_id: int,
+        params: Dict[str, Any],
+        order_id: str,
+        margin_data: Optional[Dict[str, Any]],
+        market_open: bool,
+    ) -> Optional[int]:
+        try:
+            order_row = Order(
+                user_id=user_id,
+                zerodha_order_id=order_id,
+                tradingsymbol=params.get("tradingsymbol"),
+                exchange=params.get("exchange"),
+                transaction_type=params.get("transaction_type"),
+                order_type=params.get("order_type"),
+                product=params.get("product"),
+                quantity=params.get("quantity"),
+                price=params.get("price"),
+                trigger_price=params.get("trigger_price"),
+                variety=params.get("variety"),
+                validity=params.get("validity"),
+                required_margin=(margin_data or {}).get("total"),
+                charges_total=((margin_data or {}).get("charges") or {}).get("total"),
+                market_open=market_open,
+                status="PLACED",
+            )
+            db.add(order_row)
+            db.commit()
+            db.refresh(order_row)
+            return order_row.id
+        except Exception as exc:
+            db.rollback()
+            print(f"Failed to store order locally: {exc}")
+            return None
+
+    def place_order(self, db, user_id: int, order: Dict[str, Any]) -> Dict[str, Any]:
         kite = self._require_kite()
         tradingsymbol = (order.get("tradingsymbol") or "").strip().upper()
         if not tradingsymbol:
@@ -1167,8 +1240,11 @@ class MarketDataController:
                 detail=f"Order rejected by Zerodha: {error_detail}",
             ) from exc
 
+        local_order_id = self._store_local_order(db, user_id, params, order_id, margin_data, market_open)
+
         return {
             "order_id": order_id,
+            "local_order_id": local_order_id,
             "market_open": market_open,
             "required_margin": margin_data.get("total") if margin_data else None,
             "charges": margin_data.get("charges") if margin_data else None,

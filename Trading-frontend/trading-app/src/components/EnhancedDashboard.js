@@ -415,7 +415,7 @@ const EnhancedDashboard = () => {
         if (activeTab === 'nifty' || activeTab === 'banknifty') {
             fetchTableData(activeTab);
         }
-    }, [activeTab, fetchTableData, bankBlocked, niftyBlocked]);
+    }, [activeTab, niftyQuery, bankQuery, fetchTableData]);
 
     const niftyCategories = [
         { id: 'all', label: 'Show All' },
@@ -574,7 +574,8 @@ const EnhancedDashboard = () => {
         setOrderVariety('regular');
         setOrderEstimate(null);
         setOrderEstimateError('');
-        setLivePrice(null);
+        const fallbackPrice = Number(item?.price);
+        setLivePrice(Number.isFinite(fallbackPrice) ? fallbackPrice : null);
     };
 
     const closeOrderModal = () => {
@@ -592,10 +593,12 @@ const EnhancedDashboard = () => {
         try {
             const data = await fetchQuote(`NSE:${symbol}`);
             const quote = data?.[`NSE:${symbol}`];
-            setLivePrice(quote?.last_price ?? null);
+            const nextPrice = quote?.last_price;
+            if (Number.isFinite(nextPrice)) {
+                setLivePrice(nextPrice);
+            }
         } catch (error) {
             console.error('Failed to fetch live price', error);
-            setLivePrice(null);
         }
     }, []);
 
@@ -683,6 +686,13 @@ const EnhancedDashboard = () => {
         }, 5000);
         return () => clearInterval(interval);
     }, [fetchLivePrice, orderModal]);
+
+    useEffect(() => {
+        if (orderType !== 'LIMIT') return;
+        if (orderPrice !== '') return;
+        if (!Number.isFinite(livePrice)) return;
+        setOrderPrice(Number(livePrice).toFixed(2));
+    }, [livePrice, orderPrice, orderType]);
 
     useEffect(() => {
         if (!orderPayload) return;

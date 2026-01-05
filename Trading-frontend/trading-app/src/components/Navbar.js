@@ -1,8 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { fetchInstruments, fetchZerodhaLoginUrl } from '../services/api';
+import { fetchInstruments, fetchZerodhaLoginUrl, fetchQuote } from '../services/api';
 import './Navbar.css';
+
+const INDEX_SYMBOLS = [
+    { label: 'NIFTY 50', key: 'NSE:NIFTY 50' },
+    { label: 'SENSEX', key: 'BSE:SENSEX' },
+];
 
 const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
     const { user, logout } = useAuth();
@@ -10,6 +15,8 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
     const [isFetchingInstruments, setIsFetchingInstruments] = useState(false);
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
     const [toast, setToast] = useState(null);
+    const [indexQuotes, setIndexQuotes] = useState({});
+    const [indexError, setIndexError] = useState('');
     const userInitial = (user?.name || user?.email || '').trim().charAt(0).toUpperCase();
 
     const showToast = (message, type = 'info') => {
@@ -60,6 +67,72 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
         setIsUserMenuOpen(false);
     }, [location.pathname]);
 
+    useEffect(() => {
+        let isActive = true;
+        const fetchIndexQuotes = async () => {
+            try {
+                setIndexError('');
+                const symbols = INDEX_SYMBOLS.map((item) => item.key).join(',');
+                const data = await fetchQuote(symbols);
+                if (!isActive) return;
+                const nextQuotes = {};
+                INDEX_SYMBOLS.forEach((item) => {
+                    const quote = data?.[item.key];
+                    if (quote) {
+                        nextQuotes[item.key] = quote;
+                    }
+                });
+                if (Object.keys(nextQuotes).length > 0) {
+                    setIndexQuotes(nextQuotes);
+                }
+            } catch (error) {
+                if (!isActive) return;
+                const status = error?.response?.status;
+                if (status === 401 || status === 403) {
+                    setIndexError('Connect Zerodha to see indices.');
+                }
+            }
+        };
+        fetchIndexQuotes();
+        const interval = setInterval(fetchIndexQuotes, 5000);
+        return () => {
+            isActive = false;
+            clearInterval(interval);
+        };
+    }, []);
+
+    const renderIndexQuote = (item) => {
+        const quote = indexQuotes[item.key];
+        if (!quote) {
+            return (
+                <div className="index-ticker">
+                    <span className="index-label">{item.label}</span>
+                    <span className="index-value">--</span>
+                </div>
+            );
+        }
+        const lastPrice = Number(quote.last_price);
+        const close = Number(quote?.ohlc?.close);
+        const change = Number.isFinite(quote.net_change)
+            ? Number(quote.net_change)
+            : (Number.isFinite(lastPrice) && Number.isFinite(close) ? lastPrice - close : null);
+        const changePct = Number.isFinite(change) && Number.isFinite(close) && close !== 0
+            ? (change / close) * 100
+            : null;
+        const direction = Number.isFinite(change) && change !== 0 ? (change > 0 ? 'up' : 'down') : 'flat';
+        return (
+            <div className={`index-ticker ${direction}`}>
+                <span className="index-label">{item.label}</span>
+                <span className="index-value">
+                    {Number.isFinite(lastPrice) ? lastPrice.toFixed(2) : '--'}
+                </span>
+                <span className="index-change">
+                    {Number.isFinite(change) ? `${change > 0 ? '+' : ''}${change.toFixed(2)}` : '--'}
+                    {Number.isFinite(changePct) ? ` (${changePct > 0 ? '+' : ''}${changePct.toFixed(2)}%)` : ''}
+                </span>
+            </div>
+        );
+    };
 
     return (
         <nav className="navbar">
@@ -74,6 +147,14 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
                         </span>
                         <span className="brand-name">WyseTrade</span>
                     </Link>
+                    <div className="index-strip" aria-live="polite">
+                        {INDEX_SYMBOLS.map((item) => (
+                            <React.Fragment key={item.key}>
+                                {renderIndexQuote(item)}
+                            </React.Fragment>
+                        ))}
+                        {indexError && <span className="index-error">{indexError}</span>}
+                    </div>
                 </div>
 
                 <div className="navbar-actions">

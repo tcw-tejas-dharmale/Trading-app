@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import ProfilePage from './pages/ProfilePage';
 import ZerodhaCallback from './pages/ZerodhaCallback';
+import Nifty50Page from './pages/Nifty50Page';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import './App.css';
 
@@ -51,6 +52,7 @@ const AppLayout = () => {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/nifty50" element={<Nifty50Page />} />
           <Route path="/zerodha/callback" element={<ZerodhaCallback />} />
         </Routes>
       </main>

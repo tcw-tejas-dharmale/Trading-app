@@ -23,12 +23,66 @@
   display: flex;
   align-items: center;
   flex: 1;
+  gap: 1.5rem;
 }
 
 .navbar .brand-name {
   font-size: 24px;
   font-weight: 700;
   color: #ffffff;
+}
+
+.index-strip {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(45, 63, 82, 0.75);
+  background: rgba(12, 20, 30, 0.7);
+  box-shadow: inset 0 0 0 1px rgba(20, 32, 48, 0.6);
+  flex-wrap: wrap;
+}
+
+.index-ticker {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.index-label {
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.01em;
+}
+
+.index-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.index-change {
+  font-variant-numeric: tabular-nums;
+}
+
+.index-ticker.up .index-change {
+  color: #21c17a;
+}
+
+.index-ticker.down .index-change {
+  color: #ef4444;
+}
+
+.index-ticker.flat .index-change {
+  color: var(--text-secondary);
+}
+
+.index-error {
+  font-size: 0.85rem;
+  color: #fbbf24;
 }
 
 .navbar-actions {
@@ -297,6 +351,7 @@
   .navbar-left {
     width: 100%;
     justify-content: center;
+    flex-wrap: wrap;
   }
 
   .navbar-actions {
