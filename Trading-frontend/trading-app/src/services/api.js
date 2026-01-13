@@ -4,6 +4,16 @@ const api = axios.create({
   baseURL: process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000/api/v1',
 });
 
+let suppressLoginRedirect = false;
+
+export const disableLoginRedirect = () => {
+  suppressLoginRedirect = true;
+};
+
+export const enableLoginRedirect = () => {
+  suppressLoginRedirect = false;
+};
+
 const getStoredToken = () => localStorage.getItem('token');
 const getAuthHeaders = () => {
   const token = getStoredToken();
@@ -41,7 +51,7 @@ api.interceptors.response.use((response) => response, (error) => {
 
   if (status === 401) {
     localStorage.removeItem('token');
-    if (window.location.pathname !== '/login') {
+    if (!suppressLoginRedirect && window.location.pathname !== '/login') {
       window.location.assign('/login');
     }
   }
@@ -50,6 +60,26 @@ api.interceptors.response.use((response) => response, (error) => {
 
 export const login = async (email, password) => {
   const response = await api.post('/login/access-token', { email, password });
+  return response.data;
+};
+
+export const getGoogleLoginUrl = async (next) => {
+  const response = await api.get('/oauth/google/login', { params: { next } });
+  return response.data;
+};
+
+export const getGoogleLinkUrl = async (next) => {
+  const response = await api.get('/oauth/google/link', { params: { next }, headers: getAuthHeaders() });
+  return response.data;
+};
+
+export const unlinkGoogle = async () => {
+  const response = await api.post('/oauth/google/unlink', null, { headers: getAuthHeaders() });
+  return response.data;
+};
+
+export const fetchLinkedAccounts = async () => {
+  const response = await api.get('/users/me/linked-accounts', { headers: getAuthHeaders() });
   return response.data;
 };
 
@@ -174,8 +204,15 @@ export const placeOrder = async (payload) => {
   return response.data;
 };
 
-export const syncInstruments = async () => {
-  const response = await api.post('/market/sync-instruments', null, {
+export const tradePreview = async (payload) => {
+  const response = await api.post('/trade/preview', payload, {
+    headers: getAuthHeaders(),
+  });
+  return response.data;
+};
+
+export const tradeExecute = async (payload) => {
+  const response = await api.post('/trade/execute', payload, {
     headers: getAuthHeaders(),
   });
   return response.data;

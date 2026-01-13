@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { fetchNiftyStocks, fetchBankNiftyStocks, fetchPositions, fetchHoldings, fetchMargins, fetchQuote, fetchOrderMargins, fetchOrderStatus, fetchOrders, fetchHistoricalData, fetchZerodhaLoginUrl, syncInstruments, placeOrder } from '../services/api';
+import { fetchNiftyStocks, fetchBankNiftyStocks, fetchPositions, fetchHoldings, fetchQuote, fetchMargins, fetchOrderMargins, fetchOrderStatus, fetchOrders, fetchHistoricalData, fetchZerodhaLoginUrl, placeOrder, tradeExecute, fetchInstruments } from '../services/api';
 import { subscribeMarketTicks } from '../services/marketWs';
 import CandlestickChart from './CandlestickChart';
 import { Clock, Sliders, Search, Briefcase, X } from 'lucide-react';
@@ -76,13 +76,11 @@ const EnhancedDashboard = () => {
     const [bankError, setBankError] = useState('');
     const [openPositions, setOpenPositions] = useState([]);
     const [holdings, setHoldings] = useState([]);
-    const [margins, setMargins] = useState(null);
-    const [marginsError, setMarginsError] = useState('');
+    const [instrumentNameBySymbol, setInstrumentNameBySymbol] = useState({});
     const [niftyBlocked, setNiftyBlocked] = useState(false);
     const [bankBlocked, setBankBlocked] = useState(false);
     const [positionsBlocked, setPositionsBlocked] = useState(false);
     const [holdingsBlocked, setHoldingsBlocked] = useState(false);
-    const [isSyncing, setIsSyncing] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
     const [niftyCategory, setNiftyCategory] = useState('all');
     const [orderSubmittingId, setOrderSubmittingId] = useState(null);
@@ -93,13 +91,40 @@ const EnhancedDashboard = () => {
     const [orderType, setOrderType] = useState('MARKET');
     const [orderPrice, setOrderPrice] = useState('');
     const [orderVariety, setOrderVariety] = useState('regular');
+    const [orderIntent, setOrderIntent] = useState('delivery'); // delivery (CNC) | intraday (MIS)
+    const [orderTicket, setOrderTicket] = useState('regular'); // quick | regular
+    const [orderAdvanced, setOrderAdvanced] = useState(true);
+    const [orderStopEnabled, setOrderStopEnabled] = useState(false);
+    const [orderStopType, setOrderStopType] = useState('SL-M'); // SL | SL-M
+    const [orderStopPercent, setOrderStopPercent] = useState(-5);
+    const [orderTargetEnabled, setOrderTargetEnabled] = useState(false);
+    const [orderTargetPercent, setOrderTargetPercent] = useState(5);
+    const [orderAccountRisk, setOrderAccountRisk] = useState(500);
+    const [orderCloseTargetForMis, setOrderCloseTargetForMis] = useState(false);
+    const [marginSummary, setMarginSummary] = useState(null);
+    const [marginSummaryError, setMarginSummaryError] = useState('');
     const [orderEstimate, setOrderEstimate] = useState(null);
     const [orderEstimateError, setOrderEstimateError] = useState('');
     const [livePrice, setLivePrice] = useState(null);
     const [lastOrderStatus, setLastOrderStatus] = useState(null);
+    const [recentPurchase, setRecentPurchase] = useState(null);
+    const [orderToast, setOrderToast] = useState(null);
     const [liveOrders, setLiveOrders] = useState([]);
     const orderStatusIntervalRef = useRef(null);
     const formatAmount = (value) => (Number.isFinite(value) ? Number(value).toFixed(2) : '--');
+    const holdingsTotals = useMemo(() => {
+        let profit = 0;
+        let loss = 0;
+        (Array.isArray(holdings) ? holdings : []).forEach((holding) => {
+            const pnl = Number(holding?.pnl);
+            if (!Number.isFinite(pnl) || pnl === 0) return;
+            if (pnl > 0) profit += pnl;
+            else loss += Math.abs(pnl);
+        });
+        return { profit, loss, net: profit - loss };
+    }, [holdings]);
+    const [orderRecommendation, setOrderRecommendation] = useState({ label: '—', detail: '', tone: 'neutral' });
+    const candleRecoCacheRef = useRef(new Map());
     const [zerodhaConnected, setZerodhaConnected] = useState(
         () => localStorage.getItem('zerodha_connected') === 'true'
     );
@@ -121,6 +146,7 @@ const EnhancedDashboard = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const [searchParams, setSearchParams] = useSearchParams();
+    const sleep = useCallback((ms) => new Promise((resolve) => setTimeout(resolve, ms)), []);
     
     useEffect(() => {
         const isConnected = localStorage.getItem('zerodha_connected') === 'true';
@@ -139,6 +165,13 @@ const EnhancedDashboard = () => {
         setZerodhaConnected(isConnected);
         prevConnectionStatusRef.current = isConnected;
     }, [location.pathname]);
+
+    useEffect(() => {
+        const focus = (searchParams.get('focus') || '').trim();
+        const orderId = (searchParams.get('order') || '').trim();
+        if (!focus) return;
+        setRecentPurchase({ instrument: focus, orderId: orderId || null, ts: Date.now() });
+    }, [searchParams]);
 
     // Also listen for storage changes (in case connection happens in another tab)
     useEffect(() => {
@@ -204,22 +237,21 @@ const EnhancedDashboard = () => {
         }
     }, [holdingsBlocked, zerodhaConnected]);
 
-    const refreshMargins = useCallback(async () => {
-        if (!zerodhaConnected) {
-            setMargins(null);
-            setMarginsError('Connect Zerodha to view balances.');
-            return;
-        }
+    const refreshInstruments = useCallback(async () => {
         try {
-            const data = await fetchMargins();
-            setMargins(data);
-            setMarginsError('');
+            const data = await fetchInstruments();
+            const nextMap = {};
+            (Array.isArray(data) ? data : []).forEach((inst) => {
+                const symbol = (inst?.tradingsymbol || '').trim();
+                if (!symbol) return;
+                nextMap[symbol.toUpperCase()] = inst?.name || symbol;
+            });
+            setInstrumentNameBySymbol(nextMap);
         } catch (error) {
-            console.error("Failed to load margins", error);
-            setMargins(null);
-            setMarginsError('Unable to load margins. Please connect Zerodha.');
+            console.error('Failed to load instruments', error);
+            setInstrumentNameBySymbol({});
         }
-    }, [zerodhaConnected]);
+    }, []);
 
     const refreshOrders = useCallback(async () => {
         if (!zerodhaConnected) {
@@ -299,7 +331,11 @@ const EnhancedDashboard = () => {
                 }
             }
         }
-    }, [bankBlocked, bankQuery, niftyBlocked, niftyQuery, selectedScale, isConnecting, zerodhaConnected]);
+    }, [bankBlocked, bankQuery, isConnecting, niftyBlocked, niftyQuery, selectedScale, zerodhaConnected]);
+    const fetchTableDataRef = useRef(fetchTableData);
+    useEffect(() => {
+        fetchTableDataRef.current = fetchTableData;
+    }, [fetchTableData]);
 
 
     // 1. Initialize Options and initial data fetch
@@ -321,12 +357,8 @@ const EnhancedDashboard = () => {
     }, []);
 
     useEffect(() => {
-        refreshMargins();
-        const interval = setInterval(() => {
-            refreshMargins();
-        }, 30000);
-        return () => clearInterval(interval);
-    }, [refreshMargins]);
+        refreshInstruments();
+    }, [refreshInstruments]);
 
     useEffect(() => {
         if (!zerodhaConnected) {
@@ -334,11 +366,13 @@ const EnhancedDashboard = () => {
             return;
         }
         refreshOrders();
-        const interval = setInterval(() => {
-            refreshOrders();
-        }, 5000);
-        return () => clearInterval(interval);
     }, [refreshOrders, zerodhaConnected]);
+
+    useEffect(() => {
+        if (activeTab !== 'holdings') return;
+        if (!zerodhaConnected) return;
+        refreshOrders();
+    }, [activeTab, refreshOrders, zerodhaConnected]);
 
     // 2. Route Synchronization
     useEffect(() => {
@@ -444,12 +478,6 @@ const EnhancedDashboard = () => {
     const priceChange = latestCandle ? latestCandle.close - latestCandle.open : null;
     const priceChangePct = latestCandle ? (priceChange / latestCandle.open) * 100 : null;
 
-    useEffect(() => {
-        if (activeTab === 'nifty' || activeTab === 'banknifty') {
-            fetchTableData(activeTab);
-        }
-    }, [activeTab, niftyQuery, bankQuery, fetchTableData]);
-
     const niftyCategories = [
         { id: 'all', label: 'Show All' },
         { id: 'it', label: 'IT' },
@@ -483,11 +511,29 @@ const EnhancedDashboard = () => {
         if (activeTab === 'banknifty' && bankBlocked) {
             return undefined;
         }
-        const interval = setInterval(() => {
-            fetchTableData(activeTab);
-        }, 15000);
-        return () => clearInterval(interval);
-    }, [activeTab, bankBlocked, fetchTableData, niftyBlocked, isConnecting]);
+        let isActive = true;
+        const run = () => {
+            if (!isActive) {
+                return;
+            }
+            fetchTableDataRef.current(activeTab);
+        };
+        run();
+        const interval = setInterval(run, 15000);
+        return () => {
+            isActive = false;
+            clearInterval(interval);
+        };
+    }, [
+        activeTab,
+        bankBlocked,
+        bankQuery,
+        isConnecting,
+        niftyBlocked,
+        niftyQuery,
+        selectedScale,
+        zerodhaConnected,
+    ]);
 
     useEffect(() => {
         if (activeTab !== 'openposition') {
@@ -530,11 +576,17 @@ const EnhancedDashboard = () => {
     };
 
     useEffect(() => {
-        setNiftyQuery((prev) => ({
-            ...prev,
-            page: 1,
-            category: niftyCategory === 'all' ? '' : niftyCategory,
-        }));
+        const nextCategory = niftyCategory === 'all' ? '' : niftyCategory;
+        setNiftyQuery((prev) => {
+            if (prev.page === 1 && prev.category === nextCategory) {
+                return prev;
+            }
+            return {
+                ...prev,
+                page: 1,
+                category: nextCategory,
+            };
+        });
     }, [niftyCategory]);
 
     const setSegmentError = (segment, message) => {
@@ -542,20 +594,6 @@ const EnhancedDashboard = () => {
             setBankError(message);
         } else {
             setNiftyError(message);
-        }
-    };
-
-    const handleSyncInstruments = async (segment) => {
-        if (isSyncing) return;
-        setIsSyncing(true);
-        try {
-            await syncInstruments();
-            await fetchTableData(segment);
-        } catch (error) {
-            console.error("Failed to sync instruments", error);
-            setSegmentError(segment, 'Unable to sync instruments. Please try again.');
-        } finally {
-            setIsSyncing(false);
         }
     };
 
@@ -605,10 +643,23 @@ const EnhancedDashboard = () => {
         setOrderType('MARKET');
         setOrderPrice('');
         setOrderVariety('regular');
+        setOrderIntent('delivery');
+        setOrderTicket('regular');
+        setOrderAdvanced(true);
+        setOrderStopEnabled(false);
+        setOrderStopType('SL-M');
+        setOrderStopPercent(-5);
+        setOrderTargetEnabled(false);
+        setOrderTargetPercent(5);
+        setOrderAccountRisk(500);
+        setOrderCloseTargetForMis(false);
+        setMarginSummary(null);
+        setMarginSummaryError('');
         setOrderEstimate(null);
         setOrderEstimateError('');
         const fallbackPrice = Number(item?.price);
         setLivePrice(Number.isFinite(fallbackPrice) ? fallbackPrice : null);
+        setOrderRecommendation({ label: '—', detail: '', tone: 'neutral' });
     };
 
     const closeOrderModal = () => {
@@ -665,13 +716,31 @@ const EnhancedDashboard = () => {
                 if (['COMPLETE', 'REJECTED', 'CANCELLED'].includes(state)) {
                     stopOrderPolling();
                 }
+                return status || null;
             } catch (error) {
                 console.error('Failed to fetch order status', error);
+                return null;
             }
         };
-        await fetchStatus();
+        const first = await fetchStatus();
         orderStatusIntervalRef.current = setInterval(fetchStatus, 5000);
+        return first;
     }, [stopOrderPolling]);
+
+    const waitForTerminalOrderStatus = useCallback(async (orderId, timeoutMs = 60000) => {
+        if (!orderId) return null;
+        const started = Date.now();
+        while (Date.now() - started < timeoutMs) {
+            const status = await fetchOrderStatus(orderId);
+            setLastOrderStatus(status || null);
+            const state = (status?.status || '').toUpperCase();
+            if (['COMPLETE', 'REJECTED', 'CANCELLED'].includes(state)) {
+                return status || null;
+            }
+            await sleep(2000);
+        }
+        return lastOrderStatus;
+    }, [lastOrderStatus, sleep]);
 
     const latestLiveOrder = useMemo(() => {
         if (!Array.isArray(liveOrders) || liveOrders.length === 0) return null;
@@ -683,6 +752,28 @@ const EnhancedDashboard = () => {
         return sorted[0] || null;
     }, [liveOrders]);
 
+    const holdingsOrderHistory = useMemo(() => {
+        if (!Array.isArray(liveOrders) || liveOrders.length === 0) return [];
+        const sorted = [...liveOrders].sort(
+            (a, b) =>
+                new Date(b.order_timestamp || b.exchange_timestamp || 0).getTime() -
+                new Date(a.order_timestamp || a.exchange_timestamp || 0).getTime()
+        );
+        const holdingSet = new Set(holdings.map((h) => (h?.instrument || '').toUpperCase()).filter(Boolean));
+        const filtered = sorted.filter((o) => holdingSet.has((o?.tradingsymbol || '').toUpperCase()));
+        // If holdings haven't updated yet, show all recent orders so the user still sees the latest trade.
+        return (filtered.length ? filtered : sorted).slice(0, 25);
+    }, [holdings, liveOrders]);
+
+    const recentHolding = useMemo(() => {
+        if (!recentPurchase?.instrument) return null;
+        return (
+            holdings.find(
+                (h) => (h?.instrument || '').toUpperCase() === recentPurchase.instrument.toUpperCase()
+            ) || null
+        );
+    }, [holdings, recentPurchase]);
+
     const orderPayload = useMemo(() => {
         if (!orderModal) return null;
         const symbol = getOrderSymbol(orderModal.item);
@@ -690,17 +781,22 @@ const EnhancedDashboard = () => {
         if (!symbol || !Number.isInteger(quantity) || quantity <= 0) {
             return null;
         }
+        const product = orderIntent === 'intraday' ? 'MIS' : 'CNC';
+
+        const ticket = (orderTicket || 'regular').toLowerCase();
+        const resolvedOrderType = ticket === 'quick' ? 'MARKET' : orderType;
+        const resolvedVariety = ticket === 'quick' ? 'regular' : orderVariety;
         const payload = {
             tradingsymbol: symbol,
             quantity,
             transaction_type: orderModal.action,
             exchange: 'NSE',
-            order_type: orderType,
-            product: 'CNC',
+            order_type: resolvedOrderType,
+            product,
             validity: 'DAY',
-            variety: orderVariety,
         };
-        if (orderType === 'LIMIT') {
+        payload.variety = resolvedVariety;
+        if (payload.order_type === 'LIMIT') {
             const price = Number(orderPrice);
             if (!Number.isFinite(price) || price <= 0) {
                 return null;
@@ -708,21 +804,188 @@ const EnhancedDashboard = () => {
             payload.price = price;
         }
         return payload;
-    }, [orderModal, orderQuantity, orderType, orderPrice, orderVariety]);
+    }, [orderModal, orderQuantity, orderType, orderPrice, orderVariety, orderIntent, orderTicket]);
+
+    const computeRecommendationFromCandles = useCallback((candles) => {
+        const series = Array.isArray(candles) ? candles : [];
+        const closes = series.map((c) => Number(c?.close)).filter((v) => Number.isFinite(v));
+        if (closes.length < 60) {
+            return {
+                label: 'Neutral',
+                detail: 'Not enough candle history.',
+                tone: 'neutral',
+                metrics: null,
+            };
+        }
+
+        const sma = (arr, period) => {
+            if (arr.length < period) return null;
+            const window = arr.slice(-period);
+            return window.reduce((a, b) => a + b, 0) / period;
+        };
+
+        const emaSeries = (arr, period) => {
+            if (arr.length < period) return null;
+            const k = 2 / (period + 1);
+            const out = [];
+            let prev = arr.slice(0, period).reduce((a, b) => a + b, 0) / period;
+            out.push(prev);
+            for (let i = period; i < arr.length; i += 1) {
+                prev = (arr[i] - prev) * k + prev;
+                out.push(prev);
+            }
+            return out;
+        };
+
+        const rsi = (arr, period = 14) => {
+            if (arr.length < period + 1) return null;
+            let gains = 0;
+            let losses = 0;
+            for (let i = arr.length - period; i < arr.length; i += 1) {
+                const diff = arr[i] - arr[i - 1];
+                if (diff >= 0) gains += diff;
+                else losses += Math.abs(diff);
+            }
+            const avgGain = gains / period;
+            const avgLoss = losses / period;
+            if (avgLoss === 0) return 100;
+            const rs = avgGain / avgLoss;
+            return 100 - (100 / (1 + rs));
+        };
+
+        const sma20 = sma(closes, 20);
+        const sma50 = sma(closes, 50);
+        const rsi14 = rsi(closes, 14);
+
+        const ema12 = emaSeries(closes, 12);
+        const ema26 = emaSeries(closes, 26);
+        if (!ema12 || !ema26) {
+            return { label: 'Neutral', detail: 'Unable to compute indicators.', tone: 'neutral', metrics: null };
+        }
+        const macdLine = ema12.slice(ema12.length - ema26.length).map((v, idx) => v - ema26[idx]);
+        const signal = emaSeries(macdLine, 9);
+        const macd = macdLine[macdLine.length - 1];
+        const sig = signal ? signal[signal.length - 1] : null;
+        const hist = sig !== null ? macd - sig : null;
+        const prevMacd = macdLine.length >= 2 ? macdLine[macdLine.length - 2] : null;
+        const prevSig = signal && signal.length >= 2 ? signal[signal.length - 2] : null;
+        const macdBullCross = prevMacd !== null && prevSig !== null && prevMacd <= prevSig && macd > sig;
+        const macdBearCross = prevMacd !== null && prevSig !== null && prevMacd >= prevSig && macd < sig;
+
+        const lastClose = closes[closes.length - 1];
+        const priorSma20 = closes.length >= 25 ? sma(closes.slice(0, closes.length - 5), 20) : null;
+        const trendUp = Number.isFinite(sma20) && Number.isFinite(sma50) && lastClose > sma20 && sma20 > sma50 && (priorSma20 ? sma20 > priorSma20 : true);
+        const trendDown = Number.isFinite(sma20) && Number.isFinite(sma50) && lastClose < sma20 && sma20 < sma50 && (priorSma20 ? sma20 < priorSma20 : true);
+
+        const last = series[series.length - 1];
+        const prev = series[series.length - 2];
+        const bullishEngulfing = (() => {
+            if (!last || !prev) return false;
+            const prevBear = Number(prev.close) < Number(prev.open);
+            const currBull = Number(last.close) > Number(last.open);
+            return prevBear && currBull && Number(last.open) <= Number(prev.close) && Number(last.close) >= Number(prev.open);
+        })();
+        const bearishEngulfing = (() => {
+            if (!last || !prev) return false;
+            const prevBull = Number(prev.close) > Number(prev.open);
+            const currBear = Number(last.close) < Number(last.open);
+            return prevBull && currBear && Number(last.open) >= Number(prev.close) && Number(last.close) <= Number(prev.open);
+        })();
+
+        let score = 0;
+        if (trendUp) score += 2;
+        if (trendDown) score -= 2;
+        if (bullishEngulfing) score += 1;
+        if (bearishEngulfing) score -= 1;
+        if (macdBullCross) score += 1;
+        if (macdBearCross) score -= 1;
+        if (Number.isFinite(rsi14)) {
+            if (rsi14 > 55) score += 0.5;
+            if (rsi14 < 45) score -= 0.5;
+            if (rsi14 >= 70) score -= 0.5;
+            if (rsi14 <= 30) score += 0.25;
+        }
+
+        let label = 'Neutral';
+        let tone = 'neutral';
+        if (score >= 2) {
+            label = 'Buy';
+            tone = 'positive';
+        } else if (score <= -2) {
+            label = 'Avoid';
+            tone = 'negative';
+        }
+
+        const pattern = bullishEngulfing ? 'Bullish engulfing' : bearishEngulfing ? 'Bearish engulfing' : 'None';
+        const detailParts = [];
+        if (trendUp) detailParts.push('Uptrend');
+        if (trendDown) detailParts.push('Downtrend');
+        if (pattern !== 'None') detailParts.push(pattern);
+        if (macdBullCross) detailParts.push('MACD bullish crossover');
+        if (macdBearCross) detailParts.push('MACD bearish crossover');
+        const detail = detailParts.length ? detailParts.join(', ') : 'Mixed/sideways signals.';
+
+        return {
+            label,
+            detail,
+            tone,
+            metrics: {
+                sma20,
+                sma50,
+                rsi14,
+                macd,
+                signal: sig,
+                hist,
+                pattern,
+                score,
+            },
+        };
+    }, []);
 
     useEffect(() => {
         if (!orderModal) return undefined;
         const symbol = getOrderSymbol(orderModal.item);
         if (!symbol) return undefined;
         fetchLivePrice(symbol);
+        (async () => {
+            try {
+                const margins = await fetchMargins();
+                setMarginSummary(margins || null);
+                setMarginSummaryError('');
+            } catch (error) {
+                setMarginSummary(null);
+                setMarginSummaryError('Unable to fetch available funds.');
+            }
+        })();
         const unsubscribe = subscribeMarketTicks((ticks) => {
             const match = ticks.find((tick) => tick.symbol === symbol);
             if (match && Number.isFinite(match.ltp)) {
                 setLivePrice(match.ltp);
             }
         });
+
+        (async () => {
+            try {
+                const token = orderModal?.item?.instrument_token || orderModal?.item?.id;
+                if (!token) return;
+                const cached = candleRecoCacheRef.current.get(token);
+                if (cached) {
+                    setOrderRecommendation(cached);
+                    return;
+                }
+                const candles = Array.isArray(orderModal?.item?.candles) && orderModal.item.candles.length
+                    ? orderModal.item.candles
+                    : await fetchHistoricalData(token, '1d', '', '');
+                const reco = computeRecommendationFromCandles(candles);
+                candleRecoCacheRef.current.set(token, reco);
+                setOrderRecommendation(reco);
+            } catch (error) {
+                setOrderRecommendation({ label: 'Neutral', detail: 'Candle analysis unavailable.', tone: 'neutral' });
+            }
+        })();
+
         return () => unsubscribe();
-    }, [fetchLivePrice, orderModal]);
+    }, [fetchLivePrice, orderModal, computeRecommendationFromCandles]);
 
     useEffect(() => {
         if (orderType !== 'LIMIT') return;
@@ -771,16 +1034,98 @@ const EnhancedDashboard = () => {
                 setOrderModalError('Invalid order payload.');
                 return;
             }
-            const result = await placeOrder(orderPayload);
-            const orderId = result?.order_id;
+            const useBracket = orderTicket === 'regular' && action === 'BUY' && (orderStopEnabled || orderTargetEnabled);
+            let result = null;
+            if (useBracket) {
+                if (!orderStopEnabled) {
+                    setOrderModalError('Enable Stoploss to use automated stoploss/target.');
+                    return;
+                }
+                if (orderType !== 'MARKET') {
+                    setOrderModalError('Stoploss/Target automation currently supports MARKET entry only.');
+                    return;
+                }
+                const ltp = Number.isFinite(livePrice) ? Number(livePrice) : Number(item?.price);
+                if (!Number.isFinite(ltp) || ltp <= 0) {
+                    setOrderModalError('Live price is required for stoploss/target.');
+                    return;
+                }
+                const risk = Number(orderAccountRisk);
+                if (!Number.isFinite(risk) || risk <= 0) {
+                    setOrderModalError('Account risk must be a positive number.');
+                    return;
+                }
+                const slPercent = Math.abs(Number(orderStopPercent));
+                if (!Number.isFinite(slPercent) || slPercent <= 0) {
+                    setOrderModalError('Stoploss % must be a positive number.');
+                    return;
+                }
+                const targetPct = Math.abs(Number(orderTargetPercent));
+                const targetPrice = orderTargetEnabled ? (ltp * (1 + targetPct / 100)) : null;
+
+                const payload = {
+                    preview: {
+                        tradingsymbol: symbol,
+                        exchange: 'NSE',
+                        ltp,
+                        intent: orderIntent === 'intraday' ? 'intraday' : 'delivery',
+                        account_risk_inr: risk,
+                        quantity_override: Number(orderQuantity),
+                        stop_loss_method: 'percent',
+                        stop_loss_percent: slPercent,
+                        sl_order_type: orderStopType,
+                        target_price: targetPrice,
+                        target_mode: orderCloseTargetForMis ? 'close' : 'limit',
+                        use_close_target_for_mis: Boolean(orderCloseTargetForMis),
+                    },
+                    confirm: true,
+                };
+
+                result = await tradeExecute(payload);
+                if (result?.decision !== 'BUY') {
+                    setOrderModalError(result?.reason || 'NO_BUY');
+                    return;
+                }
+            } else {
+                result = await placeOrder(orderPayload);
+            }
+            const orderId = result?.order_id || result?.entry_order_id;
+            let finalOrderStatus = null;
             if (orderId) {
                 setLastOrderStatus({ order_id: orderId, status: 'PENDING' });
-                await pollOrderStatus(orderId);
+                pollOrderStatus(orderId);
+                finalOrderStatus = await waitForTerminalOrderStatus(orderId);
             }
             await refreshPositions();
             await refreshHoldings();
+            await refreshOrders();
             if (segment === 'nifty' || segment === 'banknifty') {
                 await fetchTableData(segment);
+            }
+
+            const normalizedAction = (action || '').toUpperCase();
+            const normalizedStatus = (finalOrderStatus?.status || '').toUpperCase();
+            if (normalizedAction === 'BUY' && normalizedStatus === 'COMPLETE') {
+                setOrderToast({
+                    message: `Order purchased: ${symbol}`,
+                    ts: Date.now(),
+                });
+                for (let attempt = 0; attempt < 3; attempt += 1) {
+                    const matched = holdings.find((h) => (h?.instrument || '').toUpperCase() === symbol.toUpperCase());
+                    if (matched) break;
+                    await sleep(1000);
+                    await refreshHoldings();
+                }
+                setRecentPurchase({ instrument: symbol, orderId: orderId || null, ts: Date.now() });
+                setActiveTab('holdings');
+                setSearchParams((prev) => {
+                    const next = new URLSearchParams(prev);
+                    next.set('focus', symbol);
+                    if (orderId) next.set('order', orderId);
+                    return next;
+                });
+                navigate('/dashboard/holdings');
+                closeOrderModal();
             }
         } catch (error) {
             console.error(`Failed to place ${action} order`, error);
@@ -795,6 +1140,10 @@ const EnhancedDashboard = () => {
 
     const renderStockTable = (segment, data, query, setQuery, total, errorMessage, onDismissError) => {
         const isAnimating = connectionSuccessAnimation[segment];
+        const recos = (data || [])
+            .map((item) => computeRecommendationFromCandles(item?.candles || [])?.label)
+            .filter(Boolean);
+        const uniqueReco = Array.from(new Set(recos));
         return (
             <div className={`stock-table-container card ${isAnimating ? 'connection-success-animation' : ''}`}>
                 {!zerodhaConnected ? (
@@ -869,24 +1218,17 @@ const EnhancedDashboard = () => {
                             <th>Company Name</th>
                             <th>Candle Chart</th>
                             <th>Position</th>
+                            <th>Reco</th>
                             <th className="text-right">Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         {data.length === 0 && (
                             <tr>
-                                <td colSpan={5} className="table-empty">
+                                <td colSpan={6} className="table-empty">
                                     <div className="empty-state">
-                                        <p>No stocks yet. Sync instruments or connect Zerodha to load live data.</p>
-                                        <div className="flex gap-2 justify-center">
-                                            <button
-                                                type="button"
-                                                className="btn btn-sm btn-outline"
-                                                onClick={() => handleSyncInstruments(segment)}
-                                                disabled={isSyncing}
-                                            >
-                                                {isSyncing ? 'Syncing...' : 'Sync instruments'}
-                                            </button>
+                                        <p>No stocks yet connect Zerodha to load live data.</p>
+                                        <div className="flex justify-center">
                                             <button
                                                 type="button"
                                                 className="btn btn-sm btn-primary"
@@ -906,6 +1248,11 @@ const EnhancedDashboard = () => {
                             const symbolUrl = symbol ? `https://www.nseindia.com/get-quotes/equity?symbol=${encodeURIComponent(symbol)}` : '';
                             const rowId = item.instrument_token || item.id || symbol;
                             const isSubmitting = orderSubmittingId === rowId;
+                            const analysis = computeRecommendationFromCandles(item.candles || []);
+                            const metrics = analysis?.metrics;
+                            const tooltip = metrics
+                                ? `SMA20=${Number(metrics.sma20).toFixed(2)} SMA50=${Number(metrics.sma50).toFixed(2)} RSI14=${Number(metrics.rsi14).toFixed(1)} MACD=${Number(metrics.macd).toFixed(3)}/${Number(metrics.signal).toFixed(3)} Pattern=${metrics.pattern}`
+                                : (analysis?.detail || '');
                             return (
                                 <tr key={item.instrument_token || item.id} className="stock-row">
                                     <td>{item.id || item.instrument_token}</td>
@@ -933,6 +1280,11 @@ const EnhancedDashboard = () => {
                                             {position}
                                         </span>
                                     </td>
+                                    <td title={tooltip}>
+                                        <span className={`analysis-badge analysis-${(analysis?.label || 'Neutral').toLowerCase()}`}>
+                                            {analysis?.label || 'Neutral'}
+                                        </span>
+                                    </td>
                                     <td className="text-right">
                                         <div className="flex gap-2 justify-end">
                                             <button
@@ -957,6 +1309,11 @@ const EnhancedDashboard = () => {
                     </tbody>
                 </table>
             </div>
+            {uniqueReco.length === 1 && uniqueReco[0] ? (
+                <div className="text-secondary text-sm" style={{ marginTop: '0.5rem' }}>
+                    All stocks in this view: <strong>{uniqueReco[0]}</strong>
+                </div>
+            ) : null}
             <div className="table-pagination">
                 <div className="text-secondary text-sm">
                     Showing {total === 0 ? 0 : (query.page - 1) * query.pageSize + 1}-
@@ -996,6 +1353,31 @@ const EnhancedDashboard = () => {
 
     return (
         <div className="enhanced-dashboard container">
+            {orderToast?.message && (
+                <div
+                    className="card"
+                    style={{
+                        position: 'fixed',
+                        top: 16,
+                        right: 16,
+                        zIndex: 9999,
+                        minWidth: 280,
+                        border: '1px solid rgba(34,197,94,0.35)',
+                    }}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <strong>{orderToast.message}</strong>
+                        <button
+                            type="button"
+                            className="btn btn-sm btn-outline"
+                            onClick={() => setOrderToast(null)}
+                            aria-label="Close"
+                        >
+                            Close
+                        </button>
+                    </div>
+                </div>
+            )}
             {/* 1. Tabs */}
             <div className="instrument-tabs-section">
                 <div className="instrument-tabs">
@@ -1177,61 +1559,104 @@ const EnhancedDashboard = () => {
                         </div>
                         <div className="card" style={{ marginBottom: '1rem' }}>
                             <div className="card-header">
-                                <Briefcase size={20} className="card-icon" />
-                                <h3 className="card-title">Account Summary</h3>
+                                <h3 className="card-title">Holdings Summary</h3>
                             </div>
-                            {marginsError && <p className="text-danger text-sm">{marginsError}</p>}
                             <div className="flex flex-wrap gap-6">
                                 <div>
-                                    <p className="text-secondary text-sm">Available Cash</p>
-                                    <strong>{formatAmount(margins?.equity?.available?.cash ?? margins?.equity?.available?.live_balance)}</strong>
-                                </div>
-                                <div>
-                                    <p className="text-secondary text-sm">Utilised</p>
-                                    <strong>{formatAmount(margins?.equity?.utilised?.debits ?? margins?.equity?.utilised?.span)}</strong>
-                                </div>
-                                <div>
-                                    <p className="text-secondary text-sm">Net</p>
-                                    <strong>{formatAmount(margins?.equity?.net)}</strong>
-                                </div>
-                                <div>
-                                    <p className="text-secondary text-sm">Order Margin (Latest)</p>
-                                    <strong>{formatAmount(orderEstimate?.total)}</strong>
-                                </div>
-                                <div>
-                                    <p className="text-secondary text-sm">Estimated Charges</p>
-                                    <strong>{formatAmount(orderEstimate?.charges?.total)}</strong>
-                                </div>
-                                <div>
-                                    <p className="text-secondary text-sm">Latest Order Status</p>
+                                    <p className="text-secondary text-sm">Status</p>
                                     <strong>{lastOrderStatus?.status || latestLiveOrder?.status || '--'}</strong>
                                 </div>
+                                <div>
+                                    <p className="text-secondary text-sm">Order ID</p>
+                                    <strong>{lastOrderStatus?.order_id || latestLiveOrder?.order_id || '--'}</strong>
+                                </div>
+                                <div>
+                                    <p className="text-secondary text-sm">Total Loss</p>
+                                    <strong>{formatAmount(holdingsTotals.loss)}</strong>
+                                </div>
+                                <div>
+                                    <p className="text-secondary text-sm">Total Profit</p>
+                                    <strong>{formatAmount(holdingsTotals.profit)}</strong>
+                                </div>
+                                <div>
+                                    <p className="text-secondary text-sm">Net P&L</p>
+                                    <strong className={holdingsTotals.net >= 0 ? 'text-success' : 'text-danger'}>
+                                        {holdingsTotals.net >= 0 ? '+' : ''}{formatAmount(holdingsTotals.net)}
+                                    </strong>
+                                </div>
                             </div>
-                            {orderEstimateError && <p className="text-danger text-sm">{orderEstimateError}</p>}
-                            {lastOrderStatus?.order_id && (
-                                <p className="text-secondary text-sm">Order ID: {lastOrderStatus.order_id}</p>
-                            )}
-                            {!lastOrderStatus?.order_id && latestLiveOrder?.order_id && (
-                                <p className="text-secondary text-sm">Order ID: {latestLiveOrder.order_id}</p>
-                            )}
                         </div>
+                        {recentPurchase?.instrument && (
+                            <div className="card" style={{ marginBottom: '1rem', border: '1px solid rgba(34,197,94,0.35)' }}>
+                                <div className="card-header">
+                                    <h3 className="card-title">Purchase Complete</h3>
+                                </div>
+                                <div className="flex flex-wrap gap-6" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <div>
+                                        <strong>{recentPurchase.instrument}</strong>
+                                        {recentPurchase.orderId ? (
+                                            <span className="text-secondary" style={{ marginLeft: 8 }}>
+                                                Order ID: {recentPurchase.orderId}
+                                            </span>
+                                        ) : null}
+                                        {recentHolding ? (
+                                            <div className="text-secondary text-sm" style={{ marginTop: 6 }}>
+                                                Qty {recentHolding.qty} · Avg {Number(recentHolding.avgPrice || 0).toFixed(2)} · LTP{' '}
+                                                {Number(recentHolding.ltp || 0).toFixed(2)} · P&L {Number(recentHolding.pnl || 0).toFixed(2)}
+                                            </div>
+                                        ) : (
+                                            <div className="text-secondary text-sm" style={{ marginTop: 6 }}>
+                                                Holding details may take a few seconds to appear. Try refreshing Holdings.
+                                            </div>
+                                        )}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="btn btn-sm btn-outline"
+                                        onClick={() => {
+                                            setRecentPurchase(null);
+                                            setSearchParams((prev) => {
+                                                const next = new URLSearchParams(prev);
+                                                next.delete('focus');
+                                                next.delete('order');
+                                                return next;
+                                            });
+                                        }}
+                                    >
+                                        Dismiss
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                         <div className="overflow-x-auto">
                             <table className="enhanced-table">
                                 <thead>
                                     <tr>
                                         <th>Instrument</th>
+                                        <th>Company</th>
                                         <th>Qty</th>
                                         <th>Avg Price</th>
+                                        <th>Invested</th>
                                         <th>LTP</th>
                                         <th>P&L</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {holdings.map((holding) => (
-                                        <tr key={holding.id || holding.instrument}>
+                                        <tr
+                                            key={holding.id || holding.instrument}
+                                            style={
+                                                recentPurchase?.instrument &&
+                                                (holding?.instrument || '').toUpperCase() === recentPurchase.instrument.toUpperCase()
+                                                    ? { background: 'rgba(34, 197, 94, 0.08)' }
+                                                    : undefined
+                                            }
+                                        >
                                             <td><strong>{holding.instrument}</strong></td>
+                                            <td>{instrumentNameBySymbol[(holding.instrument || '').toUpperCase()] || holding.instrument}</td>
                                             <td>{holding.qty}</td>
                                             <td>{Number(holding.avgPrice || 0).toFixed(2)}</td>
+                                            <td>{(Number(holding.qty || 0) * Number(holding.avgPrice || 0)).toFixed(2)}</td>
                                             <td>{Number(holding.ltp || 0).toFixed(2)}</td>
                                             <td>
                                                 <span className={holding.pnl >= 0 ? 'text-success' : 'text-danger'}>
@@ -1243,19 +1668,128 @@ const EnhancedDashboard = () => {
                                 </tbody>
                             </table>
                         </div>
+
+                        <div className="card" style={{ marginTop: '1rem' }}>
+                            <div className="card-header">
+                                <h3 className="card-title">Recent Order History</h3>
+                            </div>
+                            {holdingsOrderHistory.length === 0 ? (
+                                <p className="text-secondary text-sm">No recent orders found for current holdings.</p>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="enhanced-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Time</th>
+                                                <th>Type</th>
+                                                <th>Instrument</th>
+                                                <th>Company</th>
+                                                <th>Qty</th>
+                                                <th>Avg Price</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {holdingsOrderHistory.map((order) => {
+                                                const symbol = (order?.tradingsymbol || '').trim();
+                                                const company = instrumentNameBySymbol[symbol.toUpperCase()] || symbol;
+                                                const t = order?.order_timestamp || order?.exchange_timestamp || order?.exchange_update_timestamp;
+                                                const ts = t ? new Date(t).toLocaleString() : '--';
+                                                const qty = order?.filled_quantity ?? order?.quantity ?? '--';
+                                                const avg = order?.average_price ?? '--';
+                                                return (
+                                                    <tr key={order?.order_id || `${symbol}-${t}`}>
+                                                        <td>{ts}</td>
+                                                        <td>
+                                                            <span className={`badge ${(order?.transaction_type || '').toUpperCase() === 'BUY' ? 'badge-success' : 'badge-neutral'}`}>
+                                                                {(order?.transaction_type || '--').toUpperCase()}
+                                                            </span>
+                                                        </td>
+                                                        <td><strong>{symbol || '--'}</strong></td>
+                                                        <td>{company}</td>
+                                                        <td>{qty}</td>
+                                                        <td>{Number.isFinite(Number(avg)) ? Number(avg).toFixed(2) : avg}</td>
+                                                        <td>{(order?.status || '--').toUpperCase()}</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>
 
             {orderModal && (
                 <div className="modal-overlay">
-                    <div className="modal-content card" style={{ width: 'min(520px, 92vw)' }}>
+                    <div className="modal-content card kite-order-modal" style={{ width: 'min(520px, 92vw)' }}>
                         <div className="modal-header">
                             <h2>{orderModal.action} {orderModal?.item?.tradingsymbol || orderModal?.item?.symbol || ''}</h2>
                             <p className="modal-subtitle">Review order details and confirm.</p>
                         </div>
                         <div className="modal-body">
-                            <div className="flex flex-wrap gap-4">
+                            <div className="kite-ticket-header">
+                                <div className="kite-ticket-tabs">
+                                    {['quick', 'regular'].map((tab) => (
+                                        <button
+                                            key={tab}
+                                            type="button"
+                                            className={`kite-ticket-tab ${orderTicket === tab ? 'active' : ''}`}
+                                            onClick={() => {
+                                                setOrderTicket(tab);
+                                                if (tab === 'quick') {
+                                                    setOrderType('MARKET');
+                                                }
+                                            }}
+                                        >
+                                            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                                        </button>
+                                    ))}
+                                </div>
+                                <button
+                                    type="button"
+                                    className="kite-advanced-toggle"
+                                    onClick={() => setOrderAdvanced((prev) => !prev)}
+                                >
+                                    Advanced <span className={`kite-caret ${orderAdvanced ? 'open' : ''}`}>▾</span>
+                                </button>
+                            </div>
+
+                            {orderTicket === 'quick' ? (
+                                <div className="kite-quick-grid">
+                                    <div style={{ minWidth: '140px' }}>
+                                        <label className="text-secondary text-sm">Qty.</label>
+                                        <input
+                                            className="input"
+                                            type="number"
+                                            min="1"
+                                            step="1"
+                                            value={orderQuantity}
+                                            onChange={(e) => setOrderQuantity(e.target.value)}
+                                        />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <label className="text-secondary text-sm">Price</label>
+                                        <div className="kite-quick-price">
+                                            <strong>{Number.isFinite(livePrice) ? formatAmount(livePrice) : '--'}</strong>
+                                            <button type="button" className="kite-clear" onClick={() => setOrderPrice('')} title="Clear">
+                                                ×
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <label className="text-sm flex items-center gap-2" style={{ cursor: 'pointer' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={orderIntent === 'intraday'}
+                                            onChange={(e) => setOrderIntent(e.target.checked ? 'intraday' : 'delivery')}
+                                        />
+                                        Intraday
+                                    </label>
+                                </div>
+                            ) : (
+                                <div className="kite-ticket-grid">
                                 <div style={{ minWidth: '140px' }}>
                                     <label className="text-secondary text-sm">Quantity</label>
                                     <input
@@ -1278,16 +1812,43 @@ const EnhancedDashboard = () => {
                                         <option value="LIMIT">Limit</option>
                                     </select>
                                 </div>
-                                <div style={{ minWidth: '140px' }}>
-                                    <label className="text-secondary text-sm">Variety</label>
-                                    <select
-                                        className="input"
-                                        value={orderVariety}
-                                        onChange={(e) => setOrderVariety(e.target.value)}
-                                    >
-                                        <option value="regular">Regular</option>
-                                        <option value="amo">AMO</option>
-                                    </select>
+                                {orderTicket === 'regular' && (
+                                    <div style={{ minWidth: '140px' }}>
+                                        <label className="text-secondary text-sm">Variety</label>
+                                        <select
+                                            className="input"
+                                            value={orderVariety}
+                                            onChange={(e) => setOrderVariety(e.target.value)}
+                                        >
+                                            <option value="regular">Regular</option>
+                                            <option value="amo">AMO</option>
+                                        </select>
+                                    </div>
+                                )}
+                                <div style={{ minWidth: '260px' }}>
+                                    <label className="text-secondary text-sm">Product</label>
+                                    <div className="flex gap-4 items-center" style={{ paddingTop: '0.35rem' }}>
+                                        <label className="text-sm flex items-center gap-2" style={{ cursor: 'pointer' }}>
+                                            <input
+                                                type="radio"
+                                                name="orderProduct"
+                                                value="intraday"
+                                                checked={orderIntent === 'intraday'}
+                                                onChange={(e) => setOrderIntent(e.target.value)}
+                                            />
+                                            Intraday <span className="text-secondary text-xs">MIS</span>
+                                        </label>
+                                        <label className="text-sm flex items-center gap-2" style={{ cursor: 'pointer' }}>
+                                            <input
+                                                type="radio"
+                                                name="orderProduct"
+                                                value="delivery"
+                                                checked={orderIntent === 'delivery'}
+                                                onChange={(e) => setOrderIntent(e.target.value)}
+                                            />
+                                            Longterm <span className="text-secondary text-xs">CNC</span>
+                                        </label>
+                                    </div>
                                 </div>
                                 {orderType === 'LIMIT' && (
                                     <div style={{ minWidth: '140px' }}>
@@ -1302,13 +1863,148 @@ const EnhancedDashboard = () => {
                                         />
                                     </div>
                                 )}
+                                <div style={{ minWidth: '160px', opacity: orderType === 'MARKET' ? 0.6 : 1 }}>
+                                    <label className="text-secondary text-sm">Trigger price</label>
+                                    <input className="input" type="text" value="" placeholder="Not set" readOnly />
+                                </div>
                             </div>
+                            )}
+
+                            {orderTicket !== 'quick' && orderAdvanced && (
+                                <div className="kite-advanced-panel">
+                                    <div className="kite-advanced-row">
+                                        <div className="kite-advanced-block">
+                                            <div className="text-secondary text-sm">Stoploss</div>
+                                            <div className="flex gap-3 items-center" style={{ marginTop: 6 }}>
+                                                <label className="text-sm flex items-center gap-2" style={{ cursor: 'pointer' }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={orderStopEnabled}
+                                                        onChange={(e) => setOrderStopEnabled(e.target.checked)}
+                                                    />
+                                                    Enable
+                                                </label>
+                                                <label className="text-sm flex items-center gap-2" style={{ cursor: 'pointer', opacity: orderStopEnabled ? 1 : 0.6 }}>
+                                                    <input
+                                                        type="radio"
+                                                        name="slType"
+                                                        value="SL"
+                                                        disabled={!orderStopEnabled}
+                                                        checked={orderStopType === 'SL'}
+                                                        onChange={(e) => setOrderStopType(e.target.value)}
+                                                    />
+                                                    SL
+                                                </label>
+                                                <label className="text-sm flex items-center gap-2" style={{ cursor: 'pointer', opacity: orderStopEnabled ? 1 : 0.6 }}>
+                                                    <input
+                                                        type="radio"
+                                                        name="slType"
+                                                        value="SL-M"
+                                                        disabled={!orderStopEnabled}
+                                                        checked={orderStopType === 'SL-M'}
+                                                        onChange={(e) => setOrderStopType(e.target.value)}
+                                                    />
+                                                    SL-M
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <div className="kite-advanced-block" style={{ minWidth: 160 }}>
+                                            <label className="text-secondary text-sm">Stoploss (%)</label>
+                                            <input
+                                                className="input"
+                                                type="number"
+                                                step="0.1"
+                                                value={orderStopPercent}
+                                                disabled={!orderStopEnabled}
+                                                onChange={(e) => setOrderStopPercent(Number(e.target.value))}
+                                            />
+                                        </div>
+                                        <div className="kite-advanced-block">
+                                            <div className="text-secondary text-sm">Target</div>
+                                            <div className="flex gap-3 items-center" style={{ marginTop: 6 }}>
+                                                <label className="text-sm flex items-center gap-2" style={{ cursor: 'pointer' }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={orderTargetEnabled}
+                                                        onChange={(e) => setOrderTargetEnabled(e.target.checked)}
+                                                    />
+                                                    Enable
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <div className="kite-advanced-block" style={{ minWidth: 160 }}>
+                                            <label className="text-secondary text-sm">Target (%)</label>
+                                            <input
+                                                className="input"
+                                                type="number"
+                                                step="0.1"
+                                                value={orderTargetPercent}
+                                                disabled={!orderTargetEnabled}
+                                                onChange={(e) => setOrderTargetPercent(Number(e.target.value))}
+                                            />
+                                        </div>
+                                        <div className="kite-advanced-block" style={{ minWidth: 180 }}>
+                                            <label className="text-secondary text-sm">Account Risk (₹)</label>
+                                            <input
+                                                className="input"
+                                                type="number"
+                                                min="1"
+                                                step="1"
+                                                value={orderAccountRisk}
+                                                onChange={(e) => setOrderAccountRisk(Number(e.target.value))}
+                                            />
+                                        </div>
+                                        <div className="kite-advanced-block" style={{ minWidth: 200 }}>
+                                            <div className="text-secondary text-sm">MIS Target Mode</div>
+                                            <label className="text-sm flex items-center gap-2" style={{ cursor: 'pointer', marginTop: 6 }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={orderCloseTargetForMis}
+                                                    onChange={(e) => setOrderCloseTargetForMis(e.target.checked)}
+                                                    disabled={orderIntent !== 'intraday' || !orderTargetEnabled}
+                                                />
+                                                Close target (no limit)
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                             <div className="text-secondary text-sm" style={{ marginTop: '0.5rem' }}>
                                 Live Price: {livePrice !== null ? formatAmount(livePrice) : '--'}
                             </div>
+                            <div className={`kite-reco-inline kite-reco-${orderRecommendation.tone}`}>
+                                <span className="kite-reco-label">Recommendation: {orderRecommendation.label}</span>
+                                {orderRecommendation.metrics ? (
+                                    <span className="kite-reco-detail">
+                                        {' '}
+                                        — SMA20 {Number(orderRecommendation.metrics.sma20).toFixed(2)} / SMA50 {Number(orderRecommendation.metrics.sma50).toFixed(2)} · RSI {Number(orderRecommendation.metrics.rsi14).toFixed(1)} · MACD {Number(orderRecommendation.metrics.macd).toFixed(3)}/{Number(orderRecommendation.metrics.signal).toFixed(3)} · {orderRecommendation.metrics.pattern}
+                                    </span>
+                                ) : orderRecommendation.detail ? (
+                                    <span className="kite-reco-detail">— {orderRecommendation.detail}</span>
+                                ) : null}
+                            </div>
+                            <div className="kite-funds-row">
+                                <div className="kite-funds">
+                                    <span className="text-secondary text-sm">Required</span>{' '}
+                                    <strong>
+                                        ₹{formatAmount(orderEstimate?.total)}{' '}
+                                        <span className="text-secondary" style={{ fontWeight: 500 }}>
+                                            + {formatAmount(orderEstimate?.charges?.total)}
+                                        </span>
+                                    </strong>
+                                </div>
+                                <div className="kite-funds">
+                                    <span className="text-secondary text-sm">Available</span>{' '}
+                                    <strong>
+                                        ₹{formatAmount(marginSummary?.equity?.available?.cash ?? marginSummary?.available_cash)}
+                                    </strong>
+                                </div>
+                                {marginSummaryError ? <span className="text-danger text-xs">{marginSummaryError}</span> : null}
+                                {orderEstimateError ? <span className="text-danger text-xs">{orderEstimateError}</span> : null}
+                            </div>
                             {orderModalError && <p className="text-danger text-sm">{orderModalError}</p>}
                         </div>
-                        <div className="flex gap-2 justify-end">
+                        <div className="flex gap-2 justify-end kite-order-footer">
                             <button type="button" className="btn btn-outline" onClick={closeOrderModal}>
                                 Cancel
                             </button>
@@ -1318,7 +2014,7 @@ const EnhancedDashboard = () => {
                                 onClick={submitOrder}
                                 disabled={orderSubmittingId !== null || !orderPayload || (orderType === 'LIMIT' && !orderPrice)}
                             >
-                                {orderSubmittingAction === orderModal.action ? 'Placing...' : 'Confirm Order'}
+                                {orderSubmittingAction === orderModal.action ? 'Placing...' : 'Buy'}
                             </button>
                         </div>
                     </div>

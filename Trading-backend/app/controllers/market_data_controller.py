@@ -1,4 +1,5 @@
 import csv
+import json
 import time
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -8,6 +9,7 @@ from fastapi import HTTPException, status
 import requests
 from kiteconnect import KiteConnect
 from kiteconnect.exceptions import KiteException
+from zoneinfo import ZoneInfo
 
 from app.core.config import settings
 from app.core.database import SessionLocal
@@ -17,6 +19,7 @@ from app.models.order import Order
 
 class MarketDataController:
     _TOKEN_SETTING_KEY = "zerodha_access_token"
+    _IST = ZoneInfo("Asia/Kolkata")
 
     def __init__(self) -> None:
         self.api_key = settings.ZERODHA_API_KEY
@@ -32,6 +35,21 @@ class MarketDataController:
         self._holdings_cache: Dict[str, Any] = {"data": None, "ts": 0}
         self._candles_cache: Dict[str, Dict[str, Any]] = {}
         self._index_cache: Dict[str, Dict[str, Any]] = {}
+        self._index_snapshot_path = self._snapshot_file_path()
+        self._index_snapshot: Dict[str, Dict[str, Any]] = self._load_index_snapshot()
+
+    def _now_ist(self) -> datetime:
+        return datetime.now(self._IST)
+
+    def _coerce_ist(self, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=self._IST)
+        return value.astimezone(self._IST)
+
+    def _format_candle_date(self, value: Any) -> str:
+        if isinstance(value, datetime):
+            return self._coerce_ist(value).isoformat()
+        return str(value)
 
     def _env_path(self) -> Path:
         return Path(__file__).resolve().parents[2] / ".env"
@@ -92,6 +110,47 @@ class MarketDataController:
         if token:
             return token
         return self._load_access_token_from_env_file()
+
+    def _snapshot_file_path(self) -> Path:
+        path = Path(__file__).resolve().parents[1] / "data" / "last_quotes_snapshot.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def _load_index_snapshot(self) -> Dict[str, Dict[str, Any]]:
+        if not self._index_snapshot_path.exists():
+            return {}
+        try:
+            raw = self._index_snapshot_path.read_text(encoding="utf-8")
+            return json.loads(raw) if raw else {}
+        except Exception:
+            return {}
+
+    def _persist_index_snapshot(self) -> None:
+        try:
+            self._index_snapshot_path.write_text(json.dumps(self._index_snapshot, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
+    def _capture_quote_snapshot(self, quotes: Dict[str, Any]) -> None:
+        if not quotes:
+            return
+        now = time.time()
+        updated = False
+        for key, value in quotes.items():
+            if not key:
+                continue
+            self._index_snapshot[key] = {"data": value, "ts": now}
+            updated = True
+        if updated:
+            self._persist_index_snapshot()
+
+    def get_last_quotes_snapshot(self, symbols: List[str]) -> Dict[str, Any]:
+        results: Dict[str, Any] = {}
+        for symbol in symbols:
+            entry = self._index_snapshot.get(symbol)
+            if entry:
+                results[symbol] = entry.get("data")
+        return results
 
     def _require_kite(self) -> KiteConnect:
         if not self.kite:
@@ -164,6 +223,17 @@ class MarketDataController:
             symbol_map[inst.get("tradingsymbol")] = inst
         return symbol_map
 
+    def get_symbol_for_token(self, token: int) -> Optional[str]:
+        try:
+            lookup_token = int(token)
+        except (TypeError, ValueError):
+            return None
+        instruments = self._cached_instruments()
+        for inst in instruments:
+            if inst.get("instrument_token") == lookup_token:
+                return inst.get("tradingsymbol") or inst.get("name")
+        return None
+
     def _nse_universe_entries(self) -> List[Dict[str, str]]:
         path = self._nse_universe_path()
         if not path.exists():
@@ -212,12 +282,15 @@ class MarketDataController:
         return positions
 
     def _is_market_open(self) -> bool:
-        now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        now = self._now_ist()
         if now.weekday() >= 5:
             return False
         market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
         market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
         return market_open <= now <= market_close
+
+    def is_market_open(self) -> bool:
+        return self._is_market_open()
 
     def get_margins(self) -> Dict[str, Any]:
         kite = self._require_kite()
@@ -235,12 +308,25 @@ class MarketDataController:
             return {}
         kite = self._require_kite()
         try:
-            return kite.quote(symbols)
+            quotes = kite.quote(symbols)
         except KiteException as exc:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="Unable to fetch quotes from Zerodha.",
             ) from exc
+        now = time.time()
+        for key, value in quotes.items():
+            self._quotes_cache[key] = {"data": value, "ts": now}
+        self._capture_quote_snapshot(quotes)
+        return quotes
+
+    def get_cached_quotes(self, symbols: List[str]) -> Dict[str, Any]:
+        results: Dict[str, Any] = {}
+        for symbol in symbols:
+            cached = self._quotes_cache.get(symbol)
+            if cached:
+                results[symbol] = cached["data"]
+        return results
 
     def get_orders(self) -> List[Dict[str, Any]]:
         kite = self._require_kite()
@@ -303,14 +389,34 @@ class MarketDataController:
     def _position_qty(self, position: Dict[str, Any]) -> int:
         if position is None:
             return 0
-        qty = position.get("quantity")
-        if qty is None:
-            qty = position.get("net_quantity")
-        if qty is None:
-            buy_qty = position.get("buy_quantity") or 0
-            sell_qty = position.get("sell_quantity") or 0
-            qty = buy_qty - sell_qty
-        return qty or 0
+
+        def _to_int(value: Any) -> Optional[int]:
+            if value is None:
+                return None
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+
+        for key in ("quantity", "net_quantity", "day_quantity", "overnight_quantity"):
+            value = _to_int(position.get(key))
+            if value:
+                return value
+
+        buy_qty = (
+            _to_int(position.get("buy_quantity"))
+            or _to_int(position.get("day_buy_quantity"))
+            or _to_int(position.get("overnight_buy_quantity"))
+            or 0
+        )
+        sell_qty = (
+            _to_int(position.get("sell_quantity"))
+            or _to_int(position.get("day_sell_quantity"))
+            or _to_int(position.get("overnight_sell_quantity"))
+            or 0
+        )
+        qty = buy_qty - sell_qty
+        return qty
 
     def _get_quotes(self, instruments: List[str], ttl_seconds: int = 3) -> Dict[str, Any]:
         now = time.time()
@@ -339,6 +445,7 @@ class MarketDataController:
             for key, value in quotes.items():
                 self._quotes_cache[key] = {"data": value, "ts": now}
                 results[key] = value
+            self._capture_quote_snapshot(quotes)
         return results
 
     def _interval_from_scale(self, scale: str) -> str:
@@ -381,7 +488,7 @@ class MarketDataController:
             return []
         kite = self._require_kite()
         interval = self._interval_from_scale(scale)
-        end = datetime.utcnow()
+        end = self._now_ist()
         start = end - timedelta(days=self._default_history_days(scale))
         try:
             candles = kite.historical_data(
@@ -400,7 +507,7 @@ class MarketDataController:
         recent = candles[-5:] if candles else []
         formatted = [
             {
-                "date": c["date"].isoformat(),
+                "date": self._format_candle_date(c.get("date")),
                 "open": c["open"],
                 "high": c["high"],
                 "low": c["low"],
@@ -900,10 +1007,10 @@ class MarketDataController:
         interval_name = self._interval_from_scale(interval)
 
         if from_date and to_date:
-            start = datetime.fromisoformat(from_date)
-            end = datetime.fromisoformat(to_date)
+            start = self._coerce_ist(datetime.fromisoformat(from_date))
+            end = self._coerce_ist(datetime.fromisoformat(to_date))
         else:
-            end = datetime.utcnow()
+            end = self._now_ist()
             start = end - timedelta(days=self._default_history_days(interval))
 
         try:
@@ -922,7 +1029,7 @@ class MarketDataController:
             ) from exc
         return [
             {
-                "date": c["date"].isoformat(),
+                "date": self._format_candle_date(c.get("date")),
                 "open": c["open"],
                 "high": c["high"],
                 "low": c["low"],
@@ -978,12 +1085,17 @@ class MarketDataController:
         results = []
         for pos in positions:
             qty = self._position_qty(pos)
+            if qty == 0:
+                continue
             ltp = pos.get("last_price") or pos.get("average_price")
             avg = pos.get("average_price") or 0
             pnl = (ltp - avg) * qty if qty >= 0 else (avg - ltp) * abs(qty)
+            instrument_token = pos.get("instrument_token")
+            if instrument_token is None:
+                instrument_token = f"{pos.get('exchange')}:{pos.get('tradingsymbol')}:{pos.get('product')}"
             results.append(
                 {
-                    "id": pos.get("instrument_token"),
+                    "id": instrument_token,
                     "instrument": pos.get("tradingsymbol"),
                     "type": "BUY" if qty >= 0 else "SELL",
                     "qty": qty,

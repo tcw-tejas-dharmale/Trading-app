@@ -21,9 +21,19 @@ class Settings(BaseSettings):
     ZERODHA_API_SECRET: str = ""
     ZERODHA_ACCESS_TOKEN: str = ""
 
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    # Must match Google Console redirect URI exactly (points to backend callback endpoint).
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/v1/oauth/google/callback"
+    # Where to send users after OAuth completes.
+    FRONTEND_BASE_URL: str = "http://localhost:3000"
+
     BACKEND_CORS_ORIGINS: list[str] = [
         "http://localhost:3000",
+        "http://127.0.0.1:3000",
         "http://localhost:8000",
+        "http://127.0.0.1:8000",
     ]
 
     @computed_field

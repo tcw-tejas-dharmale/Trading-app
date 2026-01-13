@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Security, Request, Body, WebSocket, WebSocketDisconnect
-from typing import Optional, Any
+from fastapi import APIRouter, Depends, HTTPException, Security, Request, Body, WebSocket, WebSocketDisconnect, WebSocketException
+from typing import Optional, Any, List, Dict
 from pydantic import BaseModel, Field, validator
 from app.core import database
 from app.controllers.market_data_controller import market_controller
@@ -15,6 +15,20 @@ rate_limiter = SimpleRateLimiter(limit=60, window_seconds=60)
 kite_ws_manager = build_kite_ws_manager(market_controller)
 
 
+def _is_market_closed() -> bool:
+    return not market_controller.is_market_open()
+
+
+def _cached_quote_response(symbols: List[str]) -> Dict[str, Any]:
+    cached = market_controller.get_cached_quotes(symbols)
+    if cached:
+        return cached
+    snapshot = market_controller.get_last_quotes_snapshot(symbols)
+    if snapshot:
+        return snapshot
+    return {}
+
+
 class OrderRequest(BaseModel):
     tradingsymbol: str
     quantity: int = Field(..., gt=0)
@@ -26,6 +40,11 @@ class OrderRequest(BaseModel):
     price: Optional[float] = None
     trigger_price: Optional[float] = None
     variety: str = "regular"
+
+    # Zerodha advanced order fields (passed through to Kite Connect when supported)
+    iceberg_legs: Optional[int] = Field(default=None, gt=1, le=100)
+    iceberg_quantity: Optional[int] = Field(default=None, gt=0)
+    disclosed_quantity: Optional[int] = Field(default=None, gt=0)
 
     @validator(
         "tradingsymbol",
@@ -82,6 +101,20 @@ def apply_rate_limit(user_id: Optional[str]) -> None:
     key = f"user:{user_id}" if user_id else "anonymous"
     rate_limiter.check(key)
 
+def _ws_auth_user_id(websocket: WebSocket) -> Optional[str]:
+    token = websocket.query_params.get("token")
+    if not token:
+        auth_header = websocket.headers.get("authorization")
+        if auth_header and auth_header.lower().startswith("bearer "):
+            token = auth_header.split(" ", 1)[1].strip()
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        return payload.get("sub")
+    except (JWTError, Exception):
+        return None
+
 @router.get("/instruments", tags=["Market Data"])
 async def get_instruments(
     db: Any = Depends(database.get_db),
@@ -95,12 +128,17 @@ async def get_instruments(
 
 @router.websocket("/ws/quotes")
 async def stream_quotes(websocket: WebSocket):
+    user_id = _ws_auth_user_id(websocket)
+    if not user_id:
+        raise WebSocketException(code=1008)
     await websocket.accept()
     try:
+        apply_rate_limit(user_id)
         count = await kite_ws_manager.register(websocket)
         await websocket.send_json({"type": "status", "state": "connected", "subscribed": count})
         while True:
-            await websocket.receive_text()
+            message = await websocket.receive_text()
+            await kite_ws_manager.handle_client_message(websocket, message)
     except HTTPException as exc:
         await websocket.send_json({"type": "error", "detail": exc.detail})
         await websocket.close(code=1011)
@@ -253,8 +291,14 @@ def get_quote(
     """
     Get live quotes for comma-separated symbols (e.g. NSE:SBIN,NSE:INFY).
     """
-    apply_rate_limit(current_user)
     symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
+    apply_rate_limit(current_user)
+    if _is_market_closed():
+        if not symbol_list:
+            return {}
+        return _cached_quote_response(symbol_list)
+    if not symbol_list:
+        return {}
     return market_controller.get_quote(symbol_list)
 
 @router.get("/orders", tags=["Orders"])

@@ -6,6 +6,7 @@ import HomePage from './components/HomePage';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import ProfilePage from './pages/ProfilePage';
+import OAuthCallbackPage from './pages/OAuthCallbackPage';
 import ZerodhaCallback from './pages/ZerodhaCallback';
 import Nifty50Page from './pages/Nifty50Page';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -19,7 +20,7 @@ const ProtectedRoute = ({ children }) => {
   }
 
   if (!user) {
-    return <Navigate to="/signup" replace />;
+    return <Navigate to="/" replace />;
   }
 
   return children;
@@ -28,7 +29,7 @@ const ProtectedRoute = ({ children }) => {
 const AppLayout = () => {
   const [selectedInstrument, setSelectedInstrument] = useState(null);
   const location = useLocation();
-  const hideNavbar = location.pathname.startsWith('/zerodha/callback');
+  const hideNavbar = location.pathname.startsWith('/zerodha/callback') || location.pathname.startsWith('/oauth/callback');
 
   return (
     <div className="App">
@@ -50,6 +51,7 @@ const AppLayout = () => {
             }
           />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/nifty50" element={<Nifty50Page />} />

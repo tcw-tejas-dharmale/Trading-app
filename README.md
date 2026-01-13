@@ -95,3 +95,12 @@ Set `ZERODHA_ACCESS_TOKEN` in `Trading-backend/.env` if you already have a token
 ## Project Structure
 - **Trading-backend**: FastAPI app with MVC structure (Routes, Controllers, Models).
 - **Trading-frontend**: React app with modern components and styling.
+
+## Trading Module (Zerodha)
+New endpoints (JWT auth required):
+- `POST /api/v1/trade/preview`: Returns `BUY` or `NO_BUY` + product (`MIS`/`CNC`), quantity, stop-loss, and risk.
+- `POST /api/v1/trade/execute`: Places entry first, then stop-loss immediately, and manages target/OCO + MIS square-off.
+
+Notes:
+- ATR stop-loss currently requires candle data in the request (`candles` with `high/low/close`).
+- Managed OCO + MIS square-off is implemented as an in-memory background task (restart clears state).

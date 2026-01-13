@@ -1,11 +1,20 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import api, { login as loginApi, signup as signupApi, fetchCurrentUser, updateCurrentUser } from '../services/api';
+import { useNavigate } from 'react-router-dom';
+import api, {
+    login as loginApi,
+    signup as signupApi,
+    fetchCurrentUser,
+    updateCurrentUser,
+    disableLoginRedirect,
+    enableLoginRedirect,
+} from '../services/api';
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    const navigate = useNavigate();
 
     useEffect(() => {
         const token = localStorage.getItem('token');
@@ -79,10 +88,16 @@ export const AuthProvider = ({ children }) => {
     };
 
     const logout = () => {
+        disableLoginRedirect();
         localStorage.removeItem('token');
         localStorage.setItem('zerodha_connected', 'false');
         delete api.defaults.headers.common.Authorization;
         setUser(null);
+        disableLoginRedirect();
+        navigate('/');
+        setTimeout(() => {
+            enableLoginRedirect();
+        }, 200);
     };
 
     const updateProfile = async (payload) => {
@@ -92,8 +107,21 @@ export const AuthProvider = ({ children }) => {
         return updatedUser;
     };
 
+    const completeOAuthLogin = async (token) => {
+        localStorage.setItem('token', token);
+        localStorage.setItem('zerodha_connected', 'false');
+        api.defaults.headers.common.Authorization = `Bearer ${token}`;
+        try {
+            const profile = await fetchCurrentUser();
+            setUser({ token, ...profile });
+        } catch (error) {
+            setUser({ token });
+        }
+        return true;
+    };
+
     return (
-        <AuthContext.Provider value={{ user, login, signup, logout, updateProfile, loading }}>
+        <AuthContext.Provider value={{ user, login, signup, logout, updateProfile, completeOAuthLogin, loading }}>
             {children}
         </AuthContext.Provider>
     );

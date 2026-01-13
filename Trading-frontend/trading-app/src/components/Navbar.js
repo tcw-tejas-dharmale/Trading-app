@@ -71,6 +71,17 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
     }, [location.pathname]);
 
     useEffect(() => {
+        if (!user) {
+            setIndexQuotes({});
+            setIndexError('');
+            lastTickAtRef.current = 0;
+            if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current);
+                pollIntervalRef.current = null;
+            }
+            return;
+        }
+
         const indexSet = new Set(INDEX_SYMBOLS.map((item) => item.key));
         const pollQuotes = async () => {
             try {
@@ -138,7 +149,7 @@ const Navbar = ({ onInstrumentChange, selectedInstrument }) => {
                 pollIntervalRef.current = null;
             }
         };
-    }, []);
+    }, [user]);
 
     const renderIndexQuote = (item) => {
         const tick = indexQuotes[item.key];

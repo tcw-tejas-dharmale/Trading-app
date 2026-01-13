@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { User, Mail, Shield, Bell, Edit2, Save, X, Eye, EyeOff } from 'lucide-react';
+import { fetchLinkedAccounts, getGoogleLinkUrl, unlinkGoogle } from '../services/api';
 import './ProfilePage.css';
 
 const ProfilePage = () => {
@@ -13,6 +14,10 @@ const ProfilePage = () => {
   const [passwordSuccess, setPasswordSuccess] = useState('');
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [showPasswords, setShowPasswords] = useState(false);
+  const [linkedAccounts, setLinkedAccounts] = useState(null);
+  const [oauthBusy, setOauthBusy] = useState(false);
+  const [oauthError, setOauthError] = useState('');
+  const [oauthSuccess, setOauthSuccess] = useState('');
   const [profileData, setProfileData] = useState({
     name: user?.name || user?.email || 'User',
     email: user?.email || 'user@example.com',
@@ -34,6 +39,76 @@ const ProfilePage = () => {
       email: user.email || 'user@example.com',
     }));
   }, [user, isEditing]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const linked = params.get('linked');
+    const oauthErrorParam = params.get('oauth_error');
+    if (linked === 'google') {
+      setOauthSuccess('Google account linked successfully.');
+      params.delete('linked');
+      const nextQuery = params.toString();
+      window.history.replaceState({}, '', `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}`);
+    }
+    if (oauthErrorParam) {
+      setOauthError('Google account linking failed. Please try again.');
+      params.delete('oauth_error');
+      const nextQuery = params.toString();
+      window.history.replaceState({}, '', `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}`);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setLinkedAccounts(null);
+      return;
+    }
+    const load = async () => {
+      try {
+        const data = await fetchLinkedAccounts();
+        setLinkedAccounts(data);
+      } catch (err) {
+        // Ignore; page works without this.
+      }
+    };
+    load();
+  }, [user]);
+
+  const handleLinkGoogle = async () => {
+    setOauthError('');
+    setOauthSuccess('');
+    setOauthBusy(true);
+    try {
+      const nextUrl = `${window.location.origin}/profile`;
+      const { url } = await getGoogleLinkUrl(nextUrl);
+      if (!url) {
+        throw new Error('Missing link URL');
+      }
+      window.location.assign(url);
+    } catch (err) {
+      setOauthError('Unable to start Google linking. Please try again.');
+      setOauthBusy(false);
+    }
+  };
+
+  const handleUnlinkGoogle = async () => {
+    setOauthError('');
+    setOauthSuccess('');
+    setOauthBusy(true);
+    try {
+      const result = await unlinkGoogle();
+      if (result?.unlinked) {
+        setOauthSuccess('Google account unlinked.');
+      }
+      const data = await fetchLinkedAccounts();
+      setLinkedAccounts(data);
+    } catch (err) {
+      const message = err?.response?.data?.detail || 'Unable to unlink Google. Please try again.';
+      setOauthError(message);
+    } finally {
+      setOauthBusy(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!updateProfile) {
@@ -221,6 +296,30 @@ const ProfilePage = () => {
           <div className="settings-card card">
             <h3 className="settings-title">Account Settings</h3>
             <div className="settings-list">
+              {user && (
+                <div className="setting-item">
+                  <div className="setting-icon">
+                    <User size={20} />
+                  </div>
+                  <div className="setting-content">
+                    <h4 className="setting-name">Google Account</h4>
+                    <p className="setting-description">
+                      {linkedAccounts?.google?.linked ? 'Linked' : 'Not linked'}
+                    </p>
+                    {oauthError && <p className="setting-description" style={{ color: '#fca5a5' }}>{oauthError}</p>}
+                    {oauthSuccess && <p className="setting-description" style={{ color: '#86efac' }}>{oauthSuccess}</p>}
+                  </div>
+                  {linkedAccounts?.google?.linked ? (
+                    <button className="btn btn-outline btn-sm" onClick={handleUnlinkGoogle} disabled={oauthBusy}>
+                      Unlink
+                    </button>
+                  ) : (
+                    <button className="btn btn-outline btn-sm" onClick={handleLinkGoogle} disabled={oauthBusy}>
+                      Link
+                    </button>
+                  )}
+                </div>
+              )}
               <div className="setting-item">
                 <div className="setting-icon">
                   <Shield size={20} />

@@ -1,8 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.routes import auth, market
+from app.routes import auth, market, trade
 from app.core.database import Base, engine
+from app.models import oauth_account  # noqa: F401
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -37,6 +38,7 @@ else:
 
 app.include_router(auth.router, prefix=f"{settings.API_V1_STR}", tags=["login"])
 app.include_router(market.router, prefix=f"{settings.API_V1_STR}/market")
+app.include_router(trade.router, prefix=f"{settings.API_V1_STR}/trade")
 
 @app.get("/")
 def root():
